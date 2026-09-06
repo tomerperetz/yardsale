@@ -89,6 +89,21 @@ export async function updateItem(id: string, input: ItemInput): Promise<ItemResu
   if ('error' in v) return { ok: false, error: v.error }
 
   return db.$transaction(async (tx) => {
+    // The single-item form (ItemForm.tsx) creates the item as a DRAFT with a
+    // placeholder name before the seller has typed anything real, so its
+    // slug — assigned once, at creation — is worthless until the first real
+    // save. Read the status BEFORE this update to decide: while an item has
+    // never left DRAFT its slug is disposable, so regenerate it from the
+    // real name on every save (this is also what makes the very save that
+    // publishes a draft — this call, with input.publish true — land on a
+    // proper Hebrew slug instead of the placeholder). Once an item has ever
+    // left DRAFT, freeze its slug permanently: buyers share item URLs into
+    // WhatsApp groups, and silently regenerating one on a later name edit
+    // would break every link already shared, with no way for whoever shared
+    // it to find out. This is deliberate, not an oversight — do not "fix"
+    // it by regenerating unconditionally.
+    const current = await tx.item.findUnique({ where: { id }, select: { status: true } })
+
     const item = await tx.item.update({
       where: { id },
       data: {
@@ -98,6 +113,7 @@ export async function updateItem(id: string, input: ItemInput): Promise<ItemResu
         categoryId: await categoryId(tx, v.categoryName),
         pickupFrom: v.from,
         pickupTo: v.to,
+        ...(current?.status === ItemStatus.DRAFT ? { slug: hebrewSlug(v.name, randomSuffix()) } : {}),
         ...(input.publish ? { status: ItemStatus.AVAILABLE } : {}),
       },
     })

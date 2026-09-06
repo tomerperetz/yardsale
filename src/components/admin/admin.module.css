@@ -10,12 +10,34 @@
  * .btn-accent, .btn-dark — are reused directly instead of being redefined.
  */
 
+/*
+ * Visually-hidden-but-focusable — NOT `hidden`, which removes an element
+ * from the tab order entirely. Used on the real file inputs behind the drop
+ * zones: a <label htmlFor> pointed at one of these is tappable everywhere
+ * (native browser behaviour, no JS needed) AND the input itself stays
+ * reachable by Tab / Enter for a keyboard user.
+ */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .form {
   display: grid;
   grid-template-columns: 1fr 1.12fr;
   gap: 26px;
 }
 @media (max-width: 880px) {
+  /* Phone/narrow: single column. The drop zone is the FIRST child in every
+     caller (ItemForm, EditItemForm), so it naturally lands above the fields
+     here with no extra `order` needed. */
   .form {
     grid-template-columns: 1fr;
   }
@@ -58,14 +80,16 @@
   position: absolute;
   inset-block-start: 5px;
   inset-inline-start: 5px;
-  width: 22px;
-  height: 22px;
+  /* 30px, not the mockup's 22px — a genuinely tappable remove button on a
+     phone-sized thumbnail rather than a fiddly desktop-only target. */
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: rgba(27, 25, 23, 0.72);
   color: #fff;
   border: 0;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -92,8 +116,13 @@
   font: inherit;
 }
 .dropHint {
+  /* This is a <label> (see PhotoDrop.tsx / BulkQueue.tsx) — labels default
+     to inline, so block layout and the generous tap area both need to be
+     explicit rather than relying on flex-item blockification alone. */
+  display: block;
+  cursor: pointer;
   margin-block-start: auto;
-  padding-block-start: 14px;
+  padding-block: 16px 14px;
   text-align: center;
   font-size: 13.5px;
   color: var(--ink-3);
@@ -139,6 +168,14 @@
   grid-template-columns: 1fr 1fr;
   gap: 13px;
 }
+@media (max-width: 640px) {
+  /* Phone: a side-by-side pair (price|pickup-window, and pickup-window's
+     own from|to pair — both reuse this one class) leaves each <input
+     type="date"> too narrow to show a date comfortably. Stack instead. */
+  .two {
+    grid-template-columns: 1fr;
+  }
+}
 .cats {
   display: flex;
   gap: 7px;
@@ -149,7 +186,11 @@
   border: 1px solid var(--line);
   background: #fff;
   border-radius: 999px;
-  padding: 6px 14px;
+  /* Taller than the mockup's 6px/13.5px — a genuinely tappable chip. */
+  padding: 9px 16px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
   font-size: 13.5px;
   cursor: pointer;
   color: var(--ink-2);
@@ -214,7 +255,9 @@
   border: 1px solid var(--line);
   background: #fff;
   border-radius: 10px;
-  padding: 6px 12px;
+  /* Taller than the mockup's 6px/13px — split/merge are tap targets too. */
+  padding: 10px 15px;
+  min-height: 40px;
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -264,6 +307,9 @@
   display: flex;
   gap: 8px;
   overflow-x: auto;
+  /* Scrolls inside itself — never widens the page. */
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
   padding-block-end: 4px;
   margin-block-end: 16px;
 }
@@ -314,6 +360,13 @@
 @media (max-width: 1100px) {
   .qrow {
     grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 640px) {
+  /* Phone: name/price/category/button each get their own full-width row —
+     two-up is still too tight for a comfortable price+category pair here. */
+  .qrow {
+    grid-template-columns: 1fr;
   }
 }
 .qrow img {

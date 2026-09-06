@@ -1,7 +1,8 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { readTakenAt } from '@/lib/exif-client'
+import { convertHeicIfNeeded } from '@/lib/heic-client'
 import { removePhotoAction, reorderPhotosAction } from '@/app/admin/items/actions'
 import styles from './admin.module.css'
 
@@ -13,6 +14,12 @@ export type PhotoInfo = { id: string; width: number; height: number; lqip: strin
 // route enforces the real limits server-side regardless.
 const MAX_BYTES = 12 * 1024 * 1024
 const MAX_PHOTOS_PER_ITEM = 10
+// Mirrors MAX_REQUEST_BYTES in src/app/api/upload/route.ts. Per-file and
+// per-item-count checks above don't catch a batch of several large photos
+// whose combined size still exceeds the request cap — exactly the case a
+// phone upload over mobile data is most likely to hit, so it's worth
+// refusing locally before spending the upload rather than after.
+const MAX_REQUEST_BYTES = 64 * 1024 * 1024
 
 /** `${photoId}-${width}.webp`, inlined because src/lib/images.ts (sharp) can't be imported client-side. */
 function photoSrc(itemId: string, photoId: string, width: 400 | 800 | 1600 = 400): string {
@@ -20,11 +27,12 @@ function photoSrc(itemId: string, photoId: string, width: 400 | 800 | 1600 = 400
 }
 
 /**
- * Drag-and-drop photo manager for one item: uploads straight to
- * POST /api/upload, shows a grid with a "ראשי" marker on the first photo,
- * lets the seller remove or drag-reorder, and surfaces per-file upload
- * errors (never a single all-or-nothing toast — a batch of ten photos
- * where nine succeed and one fails is the normal case).
+ * Photo manager for one item — drag-and-drop on desktop, tap-to-open-the-
+ * gallery on a phone (there's nothing to drag on a touchscreen). Uploads
+ * straight to POST /api/upload, shows a grid with a "ראשי" marker on the
+ * first photo, lets the seller remove or drag-reorder, and surfaces
+ * per-file upload errors (never a single all-or-nothing toast — a batch of
+ * ten photos where nine succeed and one fails is the normal case).
  */
 export function PhotoDrop({
   itemId,
@@ -35,6 +43,7 @@ export function PhotoDrop({
   photos: PhotoInfo[]
   onPhotosChange: (photos: PhotoInfo[]) => void
 }) {
+  const inputId = useId()
   const [dragOver, setDragOver] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
@@ -65,11 +74,34 @@ export function PhotoDrop({
     }
 
     setUploading(true)
+
+    // Read capture time and convert HEIC BEFORE the total-size check below —
+    // that check must sum the bytes actually about to be sent (i.e. after
+    // HEIC conversion), not the original files' sizes.
+    const prepared: { file: File; takenAt: Date | null }[] = []
+    for (const file of accepted) {
+      // Read the capture time from the ORIGINAL file before any HEIC
+      // conversion — the canvas round-trip strips EXIF entirely.
+      const takenAt = await readTakenAt(file)
+      // HEIC layer 2 (see src/lib/heic-client.ts): converts in-browser when
+      // needed and possible; returns the original file untouched otherwise,
+      // so the upload always proceeds and layer 3 (the server's own HEIC
+      // error) is the final fallback rather than anything failing here.
+      const uploadFile = await convertHeicIfNeeded(file)
+      prepared.push({ file: uploadFile, takenAt })
+    }
+
+    const totalBytes = prepared.reduce((sum, p) => sum + p.file.size, 0)
+    if (totalBytes > MAX_REQUEST_BYTES) {
+      setErrors([...localErrors, 'הבקשה גדולה מדי. נסו להעלות פחות תמונות בבת אחת.'])
+      setUploading(false)
+      return
+    }
+
     const form = new FormData()
     form.append('itemId', itemId)
-    for (const file of accepted) {
+    for (const { file, takenAt } of prepared) {
       form.append('files', file)
-      const takenAt = await readTakenAt(file)
       form.append('takenAt', takenAt ? takenAt.toISOString() : new Date(file.lastModified).toISOString())
     }
 
@@ -165,16 +197,30 @@ export function PhotoDrop({
             </button>
           )}
         </div>
-        <div className={styles.dropHint}>
-          <b>{uploading ? 'מעלה תמונות…' : 'גררו תמונות לכאן'}</b>
+        {/* The whole hint block doubles as a tap target on a phone — there's
+            nothing to drag on a touchscreen — via the native <label>/<input>
+            association, which keeps the real input reachable by keyboard
+            (Tab lands on it directly; it's only visually hidden, not
+            `hidden`) as well as by tap, with no JS needed for either. */}
+        <label htmlFor={inputId} className={styles.dropHint}>
+          <b>{uploading ? 'מעלה תמונות…' : 'גררו תמונות לכאן או הקישו לבחירה'}</b>
           הראשונה היא התמונה הראשית. אפשר לגרור כדי לסדר מחדש.
-        </div>
+        </label>
         <input
+          id={inputId}
           ref={fileInputRef}
           type="file"
+          // Deliberately exactly "image/*" — do not narrow this to specific
+          // MIME types or extensions, and do not add a `capture` attribute.
+          // `capture` forces the camera and removes the gallery option,
+          // which is backwards for a seller who already photographed
+          // everything. Narrowing `accept` away from "image/*" would also
+          // stop iOS Safari from transcoding a HEIC photo to JPEG on the
+          // way out of the picker — that free conversion (HEIC handling
+          // layer 1) depends on this attribute staying exactly this broad.
           accept="image/*"
           multiple
-          hidden
+          className={styles.visuallyHidden}
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files)
             e.target.value = ''

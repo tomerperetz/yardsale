@@ -3,7 +3,7 @@ import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { resetDb } from '../helpers/db'
 import { makeItem, makeOrder } from '../helpers/factories'
-import { createItem, deleteItem, normalizeCategoryName } from '@/lib/admin/items'
+import { createItem, updateItem, deleteItem, normalizeCategoryName } from '@/lib/admin/items'
 
 const valid = {
   name: 'ספה תלת מושבית',
@@ -101,5 +101,30 @@ describe('deleteItem', () => {
 
     expect(await deleteItem(item.id)).toEqual({ ok: false, error: 'אי אפשר למחוק פריט ששייך להזמנה.' })
     expect(await db.item.findUnique({ where: { id: item.id } })).not.toBeNull()
+  })
+})
+
+describe('updateItem slug behaviour', () => {
+  beforeEach(resetDb)
+
+  it('regenerates the slug when a draft is renamed', async () => {
+    const created = await createItem({ ...valid, name: 'שם זמני', publish: false })
+    if (!created.ok) throw new Error('expected ok')
+
+    const updated = await updateItem(created.id, { ...valid, name: 'ספה חדשה', publish: false })
+    if (!updated.ok) throw new Error('expected ok')
+
+    expect(updated.slug.startsWith('ספה-חדשה-')).toBe(true)
+    expect(updated.slug).not.toBe(created.slug)
+  })
+
+  it('freezes the slug once an item has been published', async () => {
+    const created = await createItem(valid) // valid.publish is true
+    if (!created.ok) throw new Error('expected ok')
+
+    const updated = await updateItem(created.id, { ...valid, name: 'שם אחר לגמרי', publish: true })
+    if (!updated.ok) throw new Error('expected ok')
+
+    expect(updated.slug).toBe(created.slug)
   })
 })

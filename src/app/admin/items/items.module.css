@@ -17,6 +17,13 @@
   padding: 24px;
   margin-block-end: 22px;
 }
+@media (max-width: 480px) {
+  /* Give the form/table more usable width on a small phone. */
+  .panel {
+    padding: 16px;
+    border-radius: var(--r-md);
+  }
+}
 
 .ptitle {
   display: flex;
@@ -51,17 +58,29 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  padding: 8px 17px;
+  /* Taller than the mockup's 8px — a genuinely tappable mode switch. */
+  padding: 11px 17px;
+  min-height: 40px;
   border-radius: 11px;
   color: var(--ink-3);
   transition: 0.16s;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
 }
 .modes a.on {
   background: #fff;
   color: var(--ink);
   box-shadow: var(--sh-1);
+}
+
+/* Scrolls inside itself on a narrow screen rather than widening the page —
+   the table's columns don't reflow into stacked cards, but this satisfies
+   the same requirement without a second, parallel row layout to maintain. */
+.tableWrap {
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table {
@@ -140,14 +159,17 @@
   border: 1px solid var(--line);
   background: #fff;
   border-radius: 10px;
-  padding: 6px 12px;
+  /* Taller than the mockup's 6px — a genuinely tappable row action. */
+  padding: 9px 14px;
+  min-height: 38px;
   font: inherit;
   font-size: 13px;
   cursor: pointer;
   color: var(--ink-2);
   font-weight: 500;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
 }
 .rowbtn:hover {
   border-color: var(--ink-3);

@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { readTakenAt } from '@/lib/exif-client'
+import { convertHeicIfNeeded } from '@/lib/heic-client'
 import { groupByCaptureTime, type PhotoStamp } from '@/lib/exif'
 import { createItemAction } from '@/app/admin/items/actions'
 import styles from './admin.module.css'
@@ -10,6 +11,9 @@ import styles from './admin.module.css'
 // Mirrors src/lib/images.ts (MAX_BYTES, MAX_PHOTOS_PER_ITEM) — see PhotoDrop.tsx.
 const MAX_BYTES = 12 * 1024 * 1024
 const MAX_PHOTOS_PER_ITEM = 10
+// Mirrors MAX_REQUEST_BYTES in src/app/api/upload/route.ts — see PhotoDrop.tsx.
+// Checked per group here, since each group is its own POST /api/upload.
+const MAX_REQUEST_BYTES = 64 * 1024 * 1024
 
 type Group = { id: string; keys: string[] }
 type UploadResult = { successCount: number; errors: string[] }
@@ -33,6 +37,7 @@ export function BulkQueue({
   initialPickupTo: string
 }) {
   const router = useRouter()
+  const inputId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const filesByKey = useRef<Map<string, File>>(new Map())
   const takenAtByKey = useRef<Map<string, Date | null>>(new Map())
@@ -74,9 +79,16 @@ export function BulkQueue({
     const stamps: PhotoStamp[] = []
     for (const file of Array.from(fileList)) {
       const key = crypto.randomUUID()
-      filesByKey.current.set(key, file)
+      // Capture time comes from the ORIGINAL file — read it before any HEIC
+      // conversion below, which strips EXIF entirely via the canvas round-trip.
       const takenAt = await readTakenAt(file)
       takenAtByKey.current.set(key, takenAt)
+      // HEIC layer 2 (src/lib/heic-client.ts): convert now, at drop time,
+      // not just before upload — an unconverted HEIC file can't be rendered
+      // as a thumbnail via <img src="blob:..."> in most non-Safari browsers
+      // either, so the whole review/walk UI needs this done up front.
+      const stored = await convertHeicIfNeeded(file)
+      filesByKey.current.set(key, stored)
       stamps.push({ key, takenAt, lastModified: file.lastModified })
     }
     const proposed = groupByCaptureTime(stamps)
@@ -179,8 +191,18 @@ export function BulkQueue({
       keysToUpload.push(key)
     }
 
+    // filesByKey already holds HEIC-converted files (conversion happens at
+    // drop time in handleFiles), so this sums the bytes actually about to
+    // be sent, not the originals'.
+    const totalBytes = keysToUpload.reduce((sum, key) => sum + (filesByKey.current.get(key)?.size ?? 0), 0)
+
     let uploadResult: UploadResult = { successCount: 0, errors: localErrors }
-    if (keysToUpload.length > 0) {
+    if (totalBytes > MAX_REQUEST_BYTES) {
+      uploadResult = {
+        successCount: 0,
+        errors: [...localErrors, 'הבקשה גדולה מדי. נסו להעלות פחות תמונות בבת אחת.'],
+      }
+    } else if (keysToUpload.length > 0) {
       const form = new FormData()
       form.append('itemId', created.id)
       for (const key of keysToUpload) {
@@ -217,21 +239,32 @@ export function BulkQueue({
             if (e.dataTransfer.files.length > 0) void handleFiles(e.dataTransfer.files)
           }}
         >
-          <div className={styles.dropHint}>
-            <b>{reading ? 'קוראים את התמונות…' : 'גררו לכאן את כל התמונות מהמצלמה'}</b>
+          {/* Label association makes the whole hint block a tap target too —
+              on a phone there's nothing to drag, and this reaches the
+              gallery, not just the camera (see the input below). Also
+              keyboard-reachable: the input is only visually hidden, so Tab
+              lands on it directly. */}
+          <label htmlFor={inputId} className={styles.dropHint}>
+            <b>{reading ? 'קוראים את התמונות…' : 'גררו לכאן את כל התמונות מהמצלמה או הקישו לבחירה מהגלריה'}</b>
             אפשר לבחור כמה תמונות בבת אחת. נזהה אוטומטית אילו תמונות שייכות לאותו פריט.
-          </div>
+          </label>
           <div className={styles.actions} style={{ justifyContent: 'center' }}>
             <button type="button" className="btn btn-accent" onClick={() => fileInputRef.current?.click()} disabled={reading}>
               בחירת תמונות
             </button>
           </div>
           <input
+            id={inputId}
             ref={fileInputRef}
             type="file"
+            // Deliberately exactly "image/*" — see PhotoDrop.tsx for why this
+            // must never be narrowed (breaks iOS's free HEIC→JPEG transcode)
+            // and must never gain a `capture` attribute (forces the camera,
+            // removing the gallery — exactly wrong for a seller who already
+            // photographed everything).
             accept="image/*"
             multiple
-            hidden
+            className={styles.visuallyHidden}
             onChange={(e) => {
               if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files)
               e.target.value = ''

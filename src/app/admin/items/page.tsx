@@ -122,7 +122,7 @@ export default async function AdminItemsPage({
           {items.length === 0 ? (
             <p className={styles.empty}>עדיין לא נוספו פריטים.</p>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
                   <tr>
