@@ -21,13 +21,18 @@ export async function releaseExpiredHolds(client: PrismaLike = defaultDb, now: D
   const orderIds = expired.map((o) => o.id)
   const itemIds = expired.flatMap((o) => o.items.map((i) => i.itemId))
 
-  await client.order.updateMany({
-    where: { id: { in: orderIds } },
-    data: { status: OrderStatus.EXPIRED, holdExpiresAt: null },
-  })
+  // Items are released before the order is marked EXPIRED. If the process dies (or the
+  // second call fails) in between, the order is still PENDING_PAYMENT with a past
+  // holdExpiresAt, so the next sweep picks it up again — the item update is then a
+  // harmless no-op since it's guarded on status: RESERVED. Doing it the other way round
+  // would strand RESERVED items on an already-EXPIRED order that no sweep ever revisits.
   await client.item.updateMany({
     where: { id: { in: itemIds }, status: ItemStatus.RESERVED },
     data: { status: ItemStatus.AVAILABLE },
+  })
+  await client.order.updateMany({
+    where: { id: { in: orderIds } },
+    data: { status: OrderStatus.EXPIRED, holdExpiresAt: null },
   })
 
   return expired.length
