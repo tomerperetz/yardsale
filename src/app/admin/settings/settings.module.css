@@ -1,0 +1,59 @@
+/*
+ * /admin/settings — same panel language as orders/categories. No mockup
+ * panel of its own (docs/design/mockups/04-admin-orders.html doesn't show
+ * a settings screen), so this reuses the shared .fld/.lbl/.two primitives
+ * from globals.css and admin.module.css's .fields/.actions rather than
+ * inventing a new visual language.
+ */
+
+.panel {
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+  padding: 24px;
+  max-width: 640px;
+}
+@media (max-width: 480px) {
+  .panel {
+    padding: 16px;
+    border-radius: var(--r-md);
+  }
+}
+.ptitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-block-end: 4px;
+}
+.ptitle h2 {
+  font-size: 21px;
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+.psub {
+  font-size: 14px;
+  color: var(--ink-3);
+  margin: 0 0 20px;
+}
+
+.slotGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 13px;
+}
+@media (max-width: 640px) {
+  /* Phone: three slot fields in a row leaves each too narrow to type an
+     hour range comfortably. Single column, same as .two elsewhere. */
+  .slotGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.saved {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f7a3d;
+  background: #e4f5e9;
+  border-radius: 999px;
+  padding: 6px 12px;
+}

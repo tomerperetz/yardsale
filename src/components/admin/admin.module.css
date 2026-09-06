@@ -454,3 +454,152 @@
   color: var(--ink-2);
   margin: 0 0 16px;
 }
+
+/* ── admin shell: sidebar + main ────────────────────────────
+   Shared across every /admin/* page (items, orders, categories,
+   settings). Mockup geometry is a fixed 214px sidebar beside a wide
+   column — that's normative for the visual language, not the layout: on
+   a phone a fixed side rail eats a third of the width, so it collapses
+   to a horizontal strip above the content instead (see .side below). */
+.shell {
+  display: grid;
+  grid-template-columns: 214px 1fr;
+  gap: 26px;
+  align-items: start;
+  padding-block: 26px 60px;
+}
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+.side {
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 9px;
+  position: sticky;
+  inset-block-start: 84px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+@media (max-width: 900px) {
+  /* Collapsed into a horizontal strip that scrolls inside itself rather
+     than widening the page — never a fixed side rail on a phone. Not
+     sticky here: it already sits above every page's content, so the
+     orders badge is visible on load without adding sticky-stacking
+     complexity under the also-sticky header. */
+  .side {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--r-md);
+    gap: 4px;
+  }
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* Taller than the mockup's implicit ~36px — a genuinely tappable nav row. */
+  min-height: 40px;
+  padding: 8px 13px;
+  border-radius: 14px;
+  font-size: 14.5px;
+  color: var(--ink-2);
+  text-decoration: none;
+  font-weight: 500;
+  transition: 0.15s;
+  white-space: nowrap;
+}
+.navLink:hover {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+}
+.navOn {
+  background: #fff;
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--sh-1);
+}
+.navCount {
+  margin-inline-start: auto;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.navAlert {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  min-width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding-inline: 6px;
+}
+.navSep {
+  height: 1px;
+  background: var(--line);
+  margin: 8px 12px;
+}
+@media (max-width: 900px) {
+  .navLink {
+    margin-inline-start: 0;
+  }
+  .navSep {
+    width: 1px;
+    height: 24px;
+    margin: 0 2px;
+    flex: none;
+  }
+}
+
+/* ── first-run checklist ─────────────────────────────────── */
+.checklist {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-1);
+  padding: 16px 18px;
+  margin-block-end: 18px;
+}
+.checklistHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-block-end: 8px;
+}
+.checklistHead b {
+  font-size: 15px;
+}
+.checklistAlert {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9b3a20;
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.checklistList {
+  margin: 0 0 12px;
+  padding-inline-start: 20px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.checklistBlock {
+  color: #9b3a20;
+  font-weight: 600;
+}
+.checklistBtn {
+  font-size: 13px;
+}
