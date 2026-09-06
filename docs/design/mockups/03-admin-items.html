@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>החצר — ניהול פריטים</title>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B1917; --ink-2:#57504A; --ink-3:#8C837B;
+    --card:#FFFFFF; --line:rgba(27,25,23,.08); --line-2:rgba(27,25,23,.14);
+    --accent:#E2593A; --accent-soft:#FDEDE7;
+    --ok:#2F8F4E; --ok-soft:#E6F4EA; --warn:#B87A16; --warn-soft:#FDF3E0;
+    --sh-1:0 1px 2px rgba(27,25,23,.05);
+    --sh-2:0 2px 4px rgba(27,25,23,.04), 0 14px 36px -14px rgba(27,25,23,.16);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'Assistant',system-ui,sans-serif; color:var(--ink); background:#F6F3F0;
+    line-height:1.55; -webkit-font-smoothing:antialiased; min-height:100vh}
+  body::before{content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(55vw 50vh at 92% -10%, #FFD9C4 0%, rgba(255,217,196,0) 60%),
+      radial-gradient(50vw 45vh at 4% 2%,   #E4D6FB 0%, rgba(228,214,251,0) 58%),
+      #F6F3F0;}
+
+  /* ── chrome ─────────────────────────────────────────────── */
+  header{position:sticky; top:0; z-index:40; background:rgba(246,243,240,.72);
+    backdrop-filter:blur(20px) saturate(180%); -webkit-backdrop-filter:blur(20px) saturate(180%);
+    border-bottom:1px solid var(--line); padding-block:13px}
+  .bar{max-width:1400px; margin-inline:auto; padding-inline:26px; display:flex; align-items:center; gap:13px}
+  .brand{display:flex; align-items:center; gap:10px; margin-inline-end:auto}
+  .mark{width:32px; height:32px; border-radius:10px; flex:none;
+    background:linear-gradient(145deg,#F0805E,#E2593A 55%,#C8452B);
+    box-shadow:0 2px 8px rgba(226,89,58,.34), inset 0 1px 0 rgba(255,255,255,.4)}
+  .brand h1{font-size:18px; font-weight:700; margin:0; letter-spacing:-.02em}
+  .brand em{font-style:normal; color:var(--ink-3); font-weight:500}
+  .btn{border:0; font:inherit; cursor:pointer; border-radius:999px; padding:8px 16px; font-weight:600;
+    font-size:14px; background:#fff; color:var(--ink); box-shadow:var(--sh-1); transition:.18s;
+    display:inline-flex; align-items:center; gap:7px}
+  .btn:hover{transform:translateY(-1px); box-shadow:var(--sh-2)}
+  .btn-dark{background:var(--ink); color:#fff}
+  .btn-accent{background:var(--accent); color:#fff}
+
+  .shell{max-width:1400px; margin-inline:auto; padding:26px; display:grid;
+    grid-template-columns:214px 1fr; gap:26px; align-items:start}
+  @media(max-width:960px){.shell{grid-template-columns:1fr}}
+
+  nav.side{background:rgba(255,255,255,.66); border:1px solid var(--line); border-radius:22px;
+    padding:9px; position:sticky; top:84px}
+  nav.side a{display:flex; align-items:center; gap:10px; padding:10px 13px; border-radius:14px;
+    font-size:14.5px; color:var(--ink-2); text-decoration:none; cursor:pointer; transition:.15s;
+    font-weight:500}
+  nav.side a:hover{background:rgba(255,255,255,.9); color:var(--ink)}
+  nav.side a.on{background:#fff; color:var(--ink); font-weight:600; box-shadow:var(--sh-1)}
+  nav.side .n{margin-inline-start:auto; font-size:12.5px; color:var(--ink-3); font-weight:600}
+  nav.side .n.alert{background:var(--accent); color:#fff; border-radius:999px; min-width:20px;
+    height:20px; display:grid; place-items:center; padding-inline:6px}
+  .sep{height:1px; background:var(--line); margin:8px 12px}
+
+  .panel{background:#fff; border-radius:24px; box-shadow:var(--sh-2); padding:24px; margin-bottom:22px}
+  .ptitle{display:flex; align-items:center; gap:12px; margin-bottom:4px}
+  .ptitle h2{font-size:21px; margin:0; letter-spacing:-.025em; margin-inline-end:auto}
+  .psub{font-size:14px; color:var(--ink-3); margin:0 0 20px}
+
+  .modes{display:inline-flex; background:#F2EFEC; border-radius:14px; padding:4px; gap:3px; margin-bottom:22px}
+  .modes button{border:0; background:none; font:inherit; font-size:14px; font-weight:600; cursor:pointer;
+    padding:8px 17px; border-radius:11px; color:var(--ink-3); transition:.16s}
+  .modes button.on{background:#fff; color:var(--ink); box-shadow:var(--sh-1)}
+
+  /* ── add form ───────────────────────────────────────────── */
+  .form{display:grid; grid-template-columns:1fr 1.12fr; gap:26px}
+  @media(max-width:880px){.form{grid-template-columns:1fr}}
+  .drop{border:2px dashed var(--line-2); border-radius:20px; background:#FAF8F6; padding:16px;
+    min-height:318px; display:flex; flex-direction:column; transition:.18s}
+  .drop:hover{border-color:var(--accent); background:var(--accent-soft)}
+  .shots{display:grid; grid-template-columns:repeat(3,1fr); gap:9px}
+  .shot{position:relative; aspect-ratio:1; border-radius:14px; overflow:hidden; background:#EEE9E4}
+  .shot img{width:100%; height:100%; object-fit:cover; display:block}
+  .shot .rm{position:absolute; inset-block-start:5px; inset-inline-start:5px; width:22px; height:22px;
+    border-radius:50%; background:rgba(27,25,23,.72); color:#fff; border:0; cursor:pointer;
+    font-size:12px; display:grid; place-items:center}
+  .shot.first::after{content:'ראשי'; position:absolute; inset-block-end:5px; inset-inline-end:5px;
+    background:rgba(255,255,255,.94); border-radius:999px; padding:2px 8px; font-size:10.5px; font-weight:700}
+  .shot.add{border:1.5px dashed var(--line-2); display:grid; place-items:center; cursor:pointer;
+    background:transparent; font-size:22px; color:var(--ink-3)}
+  .drop-hint{margin-top:auto; padding-top:14px; text-align:center; font-size:13.5px; color:var(--ink-3);
+    line-height:1.5}
+  .drop-hint b{display:block; color:var(--ink-2); font-size:14.5px; font-weight:600; margin-bottom:2px}
+
+  .fields{display:flex; flex-direction:column; gap:15px}
+  .lbl{font-size:12.5px; font-weight:600; color:var(--ink-3); display:flex; align-items:center;
+    gap:8px; margin-bottom:6px}
+  .lbl .hint{color:#B8AFA7; font-weight:500}
+  .fld{width:100%; border:1px solid var(--line); border-radius:13px; padding:11px 14px; font:inherit;
+    font-size:15px; background:#FAF8F6; color:var(--ink)}
+  .fld:focus{outline:0; border-color:var(--accent); background:#fff; box-shadow:0 0 0 3px var(--accent-soft)}
+  textarea.fld{resize:none; height:74px; line-height:1.5}
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:13px}
+  .cats{display:flex; gap:7px; flex-wrap:wrap; margin-top:9px}
+  .cat{border:1px solid var(--line); background:#fff; border-radius:999px; padding:6px 14px;
+    font-size:13.5px; cursor:pointer; color:var(--ink-2); font-weight:500; transition:.15s}
+  .cat:hover{border-color:var(--ink-3)}
+  .cat.on{background:var(--ink); color:#fff; border-color:var(--ink); font-weight:600}
+  .cat.new{border-style:dashed; color:var(--accent); border-color:var(--accent)}
+  .money{position:relative}
+  .money .fld{padding-inline-start:32px; font-size:17px; font-weight:600}
+  .money span{position:absolute; inset-block-start:50%; inset-inline-start:14px; transform:translateY(-50%);
+    color:var(--ink-3); font-size:16px}
+  .carry{font-size:12.5px; color:var(--ok); background:var(--ok-soft); border-radius:999px;
+    padding:3px 10px; font-weight:600}
+  .actions{display:flex; gap:10px; align-items:center; margin-top:5px}
+  .actions .sp{margin-inline-start:auto; font-size:13px; color:var(--ink-3)}
+
+  /* ── bulk ───────────────────────────────────────────────── */
+  .queue-head{display:flex; align-items:center; gap:13px; margin-bottom:15px}
+  .prog{flex:1; height:7px; background:#F2EFEC; border-radius:999px; overflow:hidden}
+  .prog i{display:block; height:100%; width:34%; background:var(--accent); border-radius:999px}
+  .qcount{font-size:14px; font-weight:600; color:var(--ink-2); white-space:nowrap}
+  .film{display:flex; gap:8px; overflow:hidden; padding-bottom:4px; margin-bottom:16px}
+  .film div{width:62px; height:62px; border-radius:13px; overflow:hidden; flex:none; position:relative; opacity:.42}
+  .film div.done{opacity:1}
+  .film div.done::after{content:'✓'; position:absolute; inset:0; background:rgba(47,143,78,.78); color:#fff;
+    display:grid; place-items:center; font-size:20px; font-weight:700}
+  .film div.now{opacity:1; box-shadow:0 0 0 2.5px var(--accent)}
+  .film img{width:100%; height:100%; object-fit:cover}
+  .qrow{display:grid; grid-template-columns:96px 1fr 128px 150px 118px; gap:13px; align-items:end;
+    background:#FAF8F6; border:1px solid var(--line); border-radius:18px; padding:14px}
+  @media(max-width:1100px){.qrow{grid-template-columns:1fr 1fr}}
+  .qrow img{width:96px; height:96px; border-radius:14px; object-fit:cover}
+  .qrow .fld{background:#fff}
+
+  /* ── recent items ───────────────────────────────────────── */
+  table{width:100%; border-collapse:collapse}
+  th{text-align:start; font-size:12px; letter-spacing:.06em; color:var(--ink-3); font-weight:600;
+    padding:0 10px 10px; border-bottom:1px solid var(--line)}
+  td{padding:11px 10px; border-bottom:1px solid var(--line); font-size:14.5px; vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  .it{display:flex; align-items:center; gap:11px}
+  .it img{width:42px; height:42px; border-radius:11px; object-fit:cover}
+  .it b{font-weight:600}
+  .it small{display:block; color:var(--ink-3); font-size:12.5px}
+  .pill{border-radius:999px; padding:4px 12px; font-size:12.5px; font-weight:600; display:inline-block}
+  .pill.ok{background:var(--ok-soft); color:var(--ok)}
+  .pill.hold{background:var(--warn-soft); color:var(--warn)}
+  .pill.sold{background:#F2EFEC; color:var(--ink-3)}
+  .rowbtn{border:1px solid var(--line); background:#fff; border-radius:10px; padding:6px 12px;
+    font:inherit; font-size:13px; cursor:pointer; color:var(--ink-2); font-weight:500}
+  .rowbtn:hover{border-color:var(--ink-3); color:var(--ink)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand"><div class="mark"></div><h1>החצר <em>· ניהול</em></h1></div>
+    <button class="btn">צפייה בחנות ↗</button>
+    <button class="btn">יציאה</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="side">
+    <a class="on">פריטים <span class="n">42</span></a>
+    <a>הזמנות <span class="n alert">2</span></a>
+    <a>קטגוריות <span class="n">6</span></a>
+    <div class="sep"></div>
+    <a>הגדרות מכירה</a>
+  </nav>
+
+  <main>
+
+    <!-- add one -->
+    <section class="panel">
+      <div class="ptitle"><h2>פריט חדש</h2><span class="carry">שדות ממשיכים מהפריט הקודם</span></div>
+      <p class="psub">גוררים תמונות, ממלאים ארבעה שדות, שומרים וממשיכים לבא. הקטגוריה וחלון האיסוף נשמרים אוטומטית.</p>
+
+      <div class="modes">
+        <button class="on">פריט אחד</button>
+        <button>העלאה מרוכזת</button>
+      </div>
+
+      <div class="form">
+        <div class="drop">
+          <div class="shots">
+            <div class="shot first"><img src="https://picsum.photos/seed/adm-1/300/300" alt=""><button class="rm">✕</button></div>
+            <div class="shot"><img src="https://picsum.photos/seed/adm-2/300/300" alt=""><button class="rm">✕</button></div>
+            <div class="shot"><img src="https://picsum.photos/seed/adm-3/300/300" alt=""><button class="rm">✕</button></div>
+            <div class="shot add">+</div>
+          </div>
+          <div class="drop-hint"><b>גררו תמונות לכאן</b>הראשונה היא התמונה הראשית. אפשר לגרור כדי לסדר מחדש.</div>
+        </div>
+
+        <div class="fields">
+          <div>
+            <label class="lbl">שם הפריט</label>
+            <input class="fld" value="ספה תלת־מושבית">
+          </div>
+          <div>
+            <label class="lbl">תיאור <span class="hint">שתיים־שלוש שורות, כולל פגמים</span></label>
+            <textarea class="fld">בד אפור, נקייה מאוד. שני כתמים קטנים במושב הימני, כמעט לא מורגשים. מידות: 210 על 90.</textarea>
+          </div>
+          <div>
+            <label class="lbl">קטגוריה</label>
+            <input class="fld" placeholder="הקלידו קטגוריה חדשה…">
+            <div class="cats">
+              <button class="cat on">ריהוט</button>
+              <button class="cat">אלקטרוניקה</button>
+              <button class="cat">מטבח</button>
+              <button class="cat">ספרים</button>
+              <button class="cat">ילדים</button>
+              <button class="cat">ספורט</button>
+              <button class="cat new">+ חדשה</button>
+            </div>
+          </div>
+          <div class="two">
+            <div>
+              <label class="lbl">מחיר</label>
+              <div class="money"><span>₪</span><input class="fld" value="850"></div>
+            </div>
+            <div>
+              <label class="lbl">חלון איסוף</label>
+              <div class="two" style="gap:8px">
+                <input class="fld" type="date" value="2026-09-12">
+                <input class="fld" type="date" value="2026-09-18">
+              </div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-accent" style="padding:11px 20px">שמירה והפריט הבא</button>
+            <button class="btn" style="padding:11px 20px">שמירה כטיוטה</button>
+            <span class="sp">‏42 פריטים במכירה</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- bulk -->
+    <section class="panel">
+      <div class="ptitle"><h2>העלאה מרוכזת</h2><button class="btn" style="font-size:13px">החלפת התמונות</button></div>
+      <p class="psub">גררתם 38 תמונות בבת אחת. כל תמונה נפתחת כטיוטה, ואתם יורדים בתור וממלאים רק את מה שמשתנה.</p>
+
+      <div class="queue-head">
+        <span class="qcount">פריט 13 מתוך 38</span>
+        <span class="prog"><i></i></span>
+        <span class="qcount" style="color:var(--ink-3)">‏25 נותרו</span>
+      </div>
+
+      <div class="film">
+        <div class="done"><img src="https://picsum.photos/seed/f1/120/120" alt=""></div>
+        <div class="done"><img src="https://picsum.photos/seed/f2/120/120" alt=""></div>
+        <div class="done"><img src="https://picsum.photos/seed/f3/120/120" alt=""></div>
+        <div class="done"><img src="https://picsum.photos/seed/f4/120/120" alt=""></div>
+        <div class="now"><img src="https://picsum.photos/seed/f5/120/120" alt=""></div>
+        <div><img src="https://picsum.photos/seed/f6/120/120" alt=""></div>
+        <div><img src="https://picsum.photos/seed/f7/120/120" alt=""></div>
+        <div><img src="https://picsum.photos/seed/f8/120/120" alt=""></div>
+        <div><img src="https://picsum.photos/seed/f9/120/120" alt=""></div>
+        <div><img src="https://picsum.photos/seed/f10/120/120" alt=""></div>
+        <div><img src="https://picsum.photos/seed/f11/120/120" alt=""></div>
+        <div><img src="https://picsum.photos/seed/f12/120/120" alt=""></div>
+        <div><img src="https://picsum.photos/seed/f13/120/120" alt=""></div>
+      </div>
+
+      <div class="qrow">
+        <img src="https://picsum.photos/seed/f5/240/240" alt="">
+        <div><label class="lbl">שם</label><input class="fld" placeholder="מנורת קריאה"></div>
+        <div><label class="lbl">מחיר</label><div class="money"><span>₪</span><input class="fld" placeholder="90"></div></div>
+        <div><label class="lbl">קטגוריה <span class="carry" style="padding:1px 7px; font-size:11px">נשמר</span></label><input class="fld" value="ריהוט"></div>
+        <button class="btn btn-dark" style="padding:11px 0; justify-content:center">הבא ←</button>
+      </div>
+    </section>
+
+    <!-- recent -->
+    <section class="panel">
+      <div class="ptitle"><h2>הפריטים שלי</h2><button class="btn" style="font-size:13px">סינון</button></div>
+      <table>
+        <thead><tr><th>פריט</th><th>קטגוריה</th><th>מחיר</th><th>חלון איסוף</th><th>סטטוס</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="it"><img src="https://picsum.photos/seed/sofa-grey/120/120" alt=""><span><b>ספה תלת־מושבית</b><small>3 תמונות</small></span></span></td>
+            <td>ריהוט</td><td>₪850</td><td><span dir="ltr">12–18</span> בספט׳</td>
+            <td><span class="pill ok">זמין</span></td><td><button class="rowbtn">עריכה</button></td>
+          </tr>
+          <tr>
+            <td><span class="it"><img src="https://picsum.photos/seed/mixer-kitchen/120/120" alt=""><span><b>מיקסר שולחני</b><small>2 תמונות</small></span></span></td>
+            <td>מטבח</td><td>₪450</td><td><span dir="ltr">12–18</span> בספט׳</td>
+            <td><span class="pill hold">שמור · <span dir="ltr">08:12</span></span></td><td><button class="rowbtn">עריכה</button></td>
+          </tr>
+          <tr>
+            <td><span class="it"><img src="https://picsum.photos/seed/bookshelf-oak/120/120" alt=""><span><b>ספרייה מעץ מלא</b><small>4 תמונות</small></span></span></td>
+            <td>ריהוט</td><td>₪320</td><td>—</td>
+            <td><span class="pill sold">נמכר</span></td><td><button class="rowbtn">עריכה</button></td>
+          </tr>
+          <tr>
+            <td><span class="it"><img src="https://picsum.photos/seed/bike-mtn/120/120" alt=""><span><b>אופני הרים ״26</b><small>5 תמונות</small></span></span></td>
+            <td>ספורט</td><td>₪620</td><td><span dir="ltr">10–20</span> בספט׳</td>
+            <td><span class="pill ok">זמין</span></td><td><button class="rowbtn">עריכה</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

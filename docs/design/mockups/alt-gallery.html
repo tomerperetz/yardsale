@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>החצר — Gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400;500;700&family=Assistant:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FAF9F6; --ink:#17171A; --ink-2:#5C5A57; --ink-3:#93908B;
+    --rule:rgba(23,23,26,.14); --rule-soft:rgba(23,23,26,.07);
+    --serif:'Frank Ruhl Libre',Georgia,serif;
+    --sans:'Assistant',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper); color:var(--ink); font-family:var(--sans);
+    line-height:1.6; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1180px; margin-inline:auto; padding-inline:36px}
+  .label{font-size:11px; letter-spacing:.14em; color:var(--ink-3); font-weight:600}
+
+  /* ── masthead ───────────────────────────────────────────── */
+  .top{display:flex; align-items:center; padding-block:18px; gap:22px;
+    border-bottom:1px solid var(--rule-soft);}
+  .top .label{margin-inline-end:auto}
+  .tlink{font-size:14px; color:var(--ink-2); text-decoration:none; padding-block:4px;
+    border-bottom:1px solid transparent; cursor:pointer; transition:.15s}
+  .tlink:hover{color:var(--ink); border-bottom-color:var(--ink)}
+  .tcart{font-size:14px; color:var(--ink); text-decoration:none; font-weight:600;
+    border-bottom:1px solid var(--ink); padding-block:4px; cursor:pointer}
+
+  .masthead{text-align:center; padding-block:64px 30px}
+  .masthead h1{font-family:var(--serif); font-weight:400; font-size:76px; line-height:1;
+    margin:0 0 20px; letter-spacing:-.02em}
+  .masthead p{font-family:var(--serif); font-size:19px; font-weight:300; color:var(--ink-2);
+    max-width:520px; margin:0 auto; line-height:1.65}
+  .rule{height:1px; background:var(--rule); margin-block:34px}
+  .stats{display:flex; justify-content:center; gap:52px; padding-bottom:34px}
+  .stat{text-align:center}
+  .stat b{display:block; font-family:var(--serif); font-size:26px; font-weight:400; line-height:1.2}
+  .stat span{font-size:11px; letter-spacing:.14em; color:var(--ink-3); font-weight:600}
+
+  /* ── filters: text, not chrome ──────────────────────────── */
+  .filters{display:flex; align-items:center; gap:26px; flex-wrap:wrap;
+    padding-block:16px; border-top:1px solid var(--rule); border-bottom:1px solid var(--rule);
+    position:sticky; top:0; background:var(--paper); z-index:20; margin-bottom:42px}
+  .f{font-size:14.5px; color:var(--ink-3); cursor:pointer; padding-block:3px;
+    border-bottom:1.5px solid transparent; transition:.15s; background:none; border-inline:0; border-top:0; font-family:inherit}
+  .f:hover{color:var(--ink)}
+  .f.on{color:var(--ink); border-bottom-color:var(--ink); font-weight:600}
+  .fspace{margin-inline-start:auto}
+  .fnum{font-size:13.5px; color:var(--ink-3); display:flex; align-items:center; gap:9px}
+  .fnum input{width:104px; accent-color:var(--ink)}
+  .fnum b{font-variant-numeric:tabular-nums; color:var(--ink); font-weight:600}
+
+  /* ── masonry ────────────────────────────────────────────── */
+  .grid{columns:4 210px; column-gap:34px; padding-bottom:120px}
+  @media(max-width:900px){.grid{columns:2 200px} .masthead h1{font-size:48px}}
+  figure{break-inside:avoid; margin:0 0 44px; cursor:pointer}
+  figure img{width:100%; display:block; background:#EFEDE9; transition:opacity .3s}
+  figure:hover img{opacity:.86}
+  figcaption{padding-top:14px}
+  .cap-top{display:flex; align-items:baseline; gap:10px; border-bottom:1px solid var(--rule-soft);
+    padding-bottom:7px; margin-bottom:7px}
+  .nm{font-family:var(--serif); font-size:19px; font-weight:400; line-height:1.3;
+    margin:0; margin-inline-end:auto}
+  .pr{font-size:15.5px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .ds{font-size:13.5px; color:var(--ink-2); margin:0 0 9px; font-weight:300}
+  .cap-bot{display:flex; align-items:center; gap:10px; font-size:11px; letter-spacing:.1em;
+    color:var(--ink-3); font-weight:600}
+  .cap-bot .sep{width:3px; height:3px; border-radius:50%; background:var(--ink-3); flex:none}
+  .cap-bot .pick{letter-spacing:.02em; font-weight:400; font-size:12px}
+
+  /* sold: typography does the work, no badge */
+  figure.sold img{filter:grayscale(1); opacity:.34}
+  figure.sold:hover img{opacity:.34}
+  figure.sold .nm,figure.sold .ds{color:var(--ink-3)}
+  figure.sold .pr{color:var(--ink-3); text-decoration:line-through; font-weight:400}
+  .sold-word{font-size:11px; letter-spacing:.2em; font-weight:700; color:var(--ink)}
+
+  /* ── cart: an editorial footer rail ─────────────────────── */
+  .rail{position:fixed; inset-block-end:0; inset-inline:0; z-index:30; background:var(--paper);
+    border-top:1px solid var(--rule);}
+  .rail-in{max-width:1180px; margin-inline:auto; padding:15px 36px;
+    display:flex; align-items:center; gap:20px}
+  .rail .label{margin:0}
+  .rail-items{font-family:var(--serif); font-size:16px; margin-inline-end:auto}
+  .rail-total{font-family:var(--serif); font-size:24px; font-variant-numeric:tabular-nums}
+  .rail-cta{background:var(--ink); color:var(--paper); border:0; font-family:var(--sans);
+    font-size:14px; font-weight:600; padding:12px 26px; cursor:pointer; transition:.18s}
+  .rail-cta:hover{background:#000}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <nav class="top">
+    <span class="label">מכירת חצר · רמת גן</span>
+    <a class="tlink">ניהול</a>
+    <a class="tcart">‏סל (3)</a>
+  </nav>
+
+  <header class="masthead">
+    <h1>החצר</h1>
+    <p>ארבעים ושניים פריטים מבית אחד, מתועדים ונמכרים במחיר סופי. התשלום בביט, האיסוף עצמי, והכול הולך.</p>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><b>42</b><span>פריטים</span></div>
+    <div class="stat"><b>6</b><span>קטגוריות</span></div>
+    <div class="stat"><b>ספטמבר</b><span>חלון איסוף</span></div>
+  </div>
+
+  <div class="filters">
+    <button class="f on">הכל</button>
+    <button class="f">ריהוט</button>
+    <button class="f">אלקטרוניקה</button>
+    <button class="f">מטבח</button>
+    <button class="f">ספרים</button>
+    <button class="f">ילדים</button>
+    <button class="f">ספורט</button>
+    <div class="fspace"></div>
+    <label class="fnum">עד <b>₪1,200</b><input type="range" min="20" max="1200" value="1200"></label>
+    <button class="f">מיון: הכי חדש</button>
+  </div>
+
+  <main class="grid">
+
+    <figure>
+      <img src="https://picsum.photos/seed/gal-sofa/700/900" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">ספה תלת־מושבית</h3><span class="pr">₪850</span></div>
+        <p class="ds">בד אפור, נקייה מאוד. שני כתמים קטנים במושב הימני.</p>
+        <div class="cap-bot"><span>ריהוט</span><span class="sep"></span><span class="pick">איסוף <span dir="ltr">12–18</span> בספטמבר</span></div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="https://picsum.photos/seed/gal-lamp/700/620" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">מנורת קריאה</h3><span class="pr">₪90</span></div>
+        <p class="ds">פליז מוברש, זרוע מתכווננת. נורה חדשה.</p>
+        <div class="cap-bot"><span>ריהוט</span><span class="sep"></span><span class="pick">איסוף <span dir="ltr">12–18</span> בספטמבר</span></div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="https://picsum.photos/seed/gal-bike/700/880" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">אופני הרים ״26</h3><span class="pr">₪620</span></div>
+        <p class="ds">שימוש קל, טופלו לפני חודש. כולל מנעול ופנס.</p>
+        <div class="cap-bot"><span>ספורט</span><span class="sep"></span><span class="pick">איסוף <span dir="ltr">10–20</span> בספטמבר</span></div>
+      </figcaption>
+    </figure>
+
+    <figure class="sold">
+      <img src="https://picsum.photos/seed/gal-shelf/700/1000" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">ספרייה מעץ מלא</h3><span class="pr">₪320</span></div>
+        <p class="ds">חמישה מדפים, אלון. פירוק נדרש לפני האיסוף.</p>
+        <div class="cap-bot"><span class="sold-word">נמכר</span><span class="sep"></span><span>ריהוט</span></div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="https://picsum.photos/seed/gal-mixer/700/700" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">מיקסר שולחני</h3><span class="pr">₪450</span></div>
+        <p class="ds">קערת נירוסטה, שלושה ראשים. עובד מצוין.</p>
+        <div class="cap-bot"><span>מטבח</span><span class="sep"></span><span class="pick">איסוף <span dir="ltr">12–18</span> בספטמבר</span></div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="https://picsum.photos/seed/gal-chairs/700/840" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">שישה כיסאות אוכל</h3><span class="pr">₪540</span></div>
+        <p class="ds">עץ ומתכת, נמכרים כסט. שניים דורשים הידוק.</p>
+        <div class="cap-bot"><span>ריהוט</span><span class="sep"></span><span class="pick">איסוף <span dir="ltr">12–18</span> בספטמבר</span></div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="https://picsum.photos/seed/gal-cans/700/560" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">אוזניות אלחוטיות</h3><span class="pr">₪380</span></div>
+        <p class="ds">ביטול רעשים, כולל נרתיק וכבל. סוללה כמו חדשה.</p>
+        <div class="cap-bot"><span>אלקטרוניקה</span><span class="sep"></span><span class="pick">איסוף <span dir="ltr">14–21</span> בספטמבר</span></div>
+      </figcaption>
+    </figure>
+
+    <figure class="sold">
+      <img src="https://picsum.photos/seed/gal-books/700/760" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">קופסת ספרי מתח</h3><span class="pr">₪60</span></div>
+        <p class="ds">עשרים ספרים, כולם במצב טוב. נמכר כמקשה אחת.</p>
+        <div class="cap-bot"><span class="sold-word">נמכר</span><span class="sep"></span><span>ספרים</span></div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="https://picsum.photos/seed/gal-stroller/700/930" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">עגלת תינוק</h3><span class="pr">₪700</span></div>
+        <p class="ds">דו־כיוונית, כולל סלקל וכיסוי גשם.</p>
+        <div class="cap-bot"><span>ילדים</span><span class="sep"></span><span class="pick">איסוף <span dir="ltr">12–18</span> בספטמבר</span></div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="https://picsum.photos/seed/gal-desk/700/650" alt="">
+      <figcaption>
+        <div class="cap-top"><h3 class="nm">שולחן עבודה מתכוונן</h3><span class="pr">₪480</span></div>
+        <p class="ds">חשמלי, גובה זיכרון. פלטה 140 על 70.</p>
+        <div class="cap-bot"><span>ריהוט</span><span class="sep"></span><span class="pick">איסוף <span dir="ltr">16–24</span> בספטמבר</span></div>
+      </figcaption>
+    </figure>
+
+  </main>
+</div>
+
+<div class="rail">
+  <div class="rail-in">
+    <span class="label">הסל שלך</span>
+    <span class="rail-items">ספה · מיקסר · אוזניות</span>
+    <span class="rail-total">₪1,680</span>
+    <button class="rail-cta">מעבר לתשלום</button>
+  </div>
+</div>
+
+</body>
+</html>

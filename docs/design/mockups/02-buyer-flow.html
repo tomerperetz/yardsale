@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>החצר — מסלול הקונה</title>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B1917; --ink-2:#57504A; --ink-3:#8C837B;
+    --card:#FFFFFF; --line:rgba(27,25,23,.08);
+    --accent:#E2593A; --accent-soft:#FDEDE7;
+    --ok:#3BA55C;
+    --sh-1:0 1px 2px rgba(27,25,23,.05);
+    --sh-2:0 2px 4px rgba(27,25,23,.04), 0 14px 36px -14px rgba(27,25,23,.16);
+    --sh-3:0 8px 16px rgba(27,25,23,.06), 0 40px 80px -28px rgba(27,25,23,.34);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'Assistant',system-ui,sans-serif; color:var(--ink); background:#F6F3F0;
+    line-height:1.55; -webkit-font-smoothing:antialiased; min-height:100vh}
+  body::before{content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(60vw 55vh at 88% -8%,  #FFD9C4 0%, rgba(255,217,196,0) 62%),
+      radial-gradient(55vw 50vh at 8% 4%,    #E4D6FB 0%, rgba(228,214,251,0) 60%),
+      radial-gradient(70vw 60vh at 50% 108%, #CDE6FA 0%, rgba(205,230,250,0) 65%),
+      #F6F3F0;}
+  .page{max-width:1420px; margin-inline:auto; padding:34px 28px 70px}
+  .lede h1{font-size:27px; margin:0 0 5px; letter-spacing:-.03em}
+  .lede p{font-size:15.5px; color:var(--ink-2); margin:0 0 30px; max-width:760px}
+
+  .row{display:flex; gap:30px; align-items:flex-start; flex-wrap:wrap; justify-content:center}
+  .step{width:392px; flex:none}
+  .cap{display:flex; align-items:baseline; gap:9px; margin-bottom:11px; padding-inline-start:4px}
+  .cap b{width:23px; height:23px; border-radius:50%; background:var(--ink); color:#fff;
+    font-size:12.5px; display:grid; place-items:center; flex:none; font-weight:700}
+  .cap h3{font-size:16px; margin:0; letter-spacing:-.02em}
+  .cap span{font-size:13px; color:var(--ink-3)}
+
+  /* phone shell */
+  .phone{background:#fff; border-radius:34px; box-shadow:var(--sh-3); overflow:hidden;
+    height:720px; display:flex; flex-direction:column; position:relative;
+    border:1px solid rgba(27,25,23,.06)}
+  .status{display:flex; align-items:center; padding:11px 20px 5px; font-size:12.5px;
+    font-weight:600; color:var(--ink-2)}
+  .status .sp{margin-inline-start:auto; letter-spacing:.1em}
+  .scr{flex:1; overflow:hidden; display:flex; flex-direction:column}
+
+  /* shared bits */
+  .nav{display:flex; align-items:center; gap:10px; padding:8px 18px 14px}
+  .nav h4{font-size:17px; margin:0; letter-spacing:-.02em; margin-inline-end:auto}
+  .x{width:32px; height:32px; border-radius:50%; background:#F2EFEC; border:0; cursor:pointer;
+    font-size:17px; color:var(--ink-2); display:grid; place-items:center}
+  .pad{padding-inline:18px}
+  .btn-primary{width:100%; border:0; border-radius:16px; padding:15px; font:inherit; font-weight:700;
+    font-size:16px; cursor:pointer; background:var(--ink); color:#fff; transition:.18s}
+  .btn-primary:hover{background:#000}
+  .btn-accent{background:var(--accent)}
+  .btn-accent:hover{background:#C8452B}
+  .foot-btn{padding:14px 18px 18px; border-top:1px solid var(--line); background:#fff}
+  .lbl{font-size:12.5px; font-weight:600; color:var(--ink-3); display:block; margin-bottom:6px;
+    letter-spacing:.02em}
+  .fld{width:100%; border:1px solid var(--line); border-radius:13px; padding:12px 14px;
+    font:inherit; font-size:15px; background:#FAF8F6; color:var(--ink)}
+  .fld::placeholder{color:#B8AFA7}
+
+  /* ── 1 · quick look ─────────────────────────────────────── */
+  .ql-photo{position:relative; margin:0 14px; border-radius:22px; overflow:hidden; aspect-ratio:4/3.4;
+    background:#EEE9E4}
+  .ql-photo img{width:100%; height:100%; object-fit:cover; display:block}
+  .ql-cat{position:absolute; inset-block-start:11px; inset-inline-start:11px; background:rgba(255,255,255,.92);
+    backdrop-filter:blur(8px); border-radius:999px; padding:5px 12px; font-size:12px; font-weight:600;
+    color:var(--ink-2)}
+  .strip{display:flex; gap:8px; padding:11px 14px 4px}
+  .strip img{width:56px; height:56px; border-radius:13px; object-fit:cover; cursor:pointer;
+    border:2px solid transparent; opacity:.62; transition:.16s}
+  .strip img.on{border-color:var(--ink); opacity:1}
+  .ql-body{padding:8px 18px 0; flex:1}
+  .ql-top{display:flex; align-items:baseline; gap:12px}
+  .ql-top h2{font-size:22px; margin:0; letter-spacing:-.025em; margin-inline-end:auto}
+  .ql-price{font-size:24px; font-weight:700; letter-spacing:-.02em}
+  .ql-desc{font-size:14.5px; color:var(--ink-2); margin:9px 0 15px}
+  .facts{border-top:1px solid var(--line); padding-top:13px; display:flex; flex-direction:column; gap:9px}
+  .fact{display:flex; align-items:center; gap:10px; font-size:14px; color:var(--ink-2)}
+  .fact i{width:26px; height:26px; border-radius:8px; background:var(--accent-soft); flex:none;
+    display:grid; place-items:center; font-style:normal; font-size:13px}
+  .fact b{color:var(--ink); font-weight:600}
+
+  /* ── 2 · checkout ───────────────────────────────────────── */
+  .mini{display:flex; align-items:center; gap:11px; padding:10px 0; border-bottom:1px solid var(--line)}
+  .mini img{width:44px; height:44px; border-radius:12px; object-fit:cover; flex:none}
+  .mini .n{font-size:14.5px; font-weight:600; margin-inline-end:auto}
+  .mini .p{font-size:14.5px; font-weight:700}
+  .total{display:flex; align-items:baseline; padding:13px 0 4px}
+  .total span{font-size:14px; color:var(--ink-2); margin-inline-end:auto}
+  .total b{font-size:21px; font-weight:700; letter-spacing:-.02em}
+  .sect{margin-top:17px}
+  .window-note{background:var(--accent-soft); border-radius:13px; padding:10px 13px; font-size:13px;
+    color:#9B3A20; margin-bottom:12px; line-height:1.45}
+  .days{display:flex; gap:7px; overflow:hidden}
+  .day{flex:1; border:1px solid var(--line); background:#FAF8F6; border-radius:13px; padding:9px 0;
+    text-align:center; cursor:pointer; transition:.16s; min-width:0}
+  .day small{display:block; font-size:11px; color:var(--ink-3); margin-bottom:1px}
+  .day b{font-size:16px; font-weight:700; letter-spacing:-.02em}
+  .day:hover{border-color:var(--ink-3)}
+  .day.on{background:var(--ink); border-color:var(--ink); color:#fff}
+  .day.on small{color:rgba(255,255,255,.6)}
+  .day.off{opacity:.34; cursor:not-allowed; background:transparent}
+  .day.off b{text-decoration:line-through}
+  .slots{display:flex; gap:7px; margin-top:9px}
+  .slot{flex:1; border:1px solid var(--line); background:#FAF8F6; border-radius:13px; padding:10px 0;
+    text-align:center; font-size:13.5px; font-weight:600; cursor:pointer; color:var(--ink-2)}
+  .slot.on{background:var(--ink); border-color:var(--ink); color:#fff}
+
+  /* ── 3 · payment ────────────────────────────────────────── */
+  .timer{margin:0 18px 15px; background:var(--ink); color:#fff; border-radius:18px; padding:15px 17px;
+    display:flex; align-items:center; gap:13px}
+  .timer .clock{font-size:25px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+  .timer .t{font-size:13px; color:rgba(255,255,255,.66); line-height:1.4}
+  .timer .t b{color:#fff; display:block; font-size:14px; font-weight:600}
+  .payline{display:flex; align-items:center; gap:12px; border:1px solid var(--line); background:#FAF8F6;
+    border-radius:15px; padding:13px 15px; margin-bottom:9px}
+  .payline .k{font-size:12.5px; color:var(--ink-3); display:block}
+  .payline .v{font-size:19px; font-weight:700; letter-spacing:-.01em; margin-inline-end:auto}
+  .copy{border:1px solid var(--line); background:#fff; border-radius:11px; padding:8px 13px;
+    font:inherit; font-size:13px; font-weight:600; cursor:pointer; color:var(--ink-2); flex:none}
+  .copy:hover{color:var(--ink); border-color:var(--ink-3)}
+  .steps{list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:11px}
+  .steps li{display:flex; gap:11px; font-size:14px; color:var(--ink-2); line-height:1.45}
+  .steps i{width:22px; height:22px; border-radius:50%; background:var(--ink); color:#fff; flex:none;
+    font-style:normal; font-size:12px; font-weight:700; display:grid; place-items:center; margin-top:2px}
+  .steps b{color:var(--ink); font-weight:600}
+  .after{font-size:12.5px; color:var(--ink-3); text-align:center; padding:11px 18px 0; line-height:1.5}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="lede">
+    <h1>מסלול הקונה — בסגנון Arc Canonical</h1>
+    <p>שלושת המסכים שנשארו להחליט עליהם, ברוחב טלפון כי שם רוב הקונים יהיו. מבט מהיר על פריט, מסך פרטים ואיסוף, ומסך התשלום בביט עם ההחזקה של 15 דקות.</p>
+  </div>
+
+  <div class="row">
+
+    <!-- ── 1 ─────────────────────────────────────────────── -->
+    <div class="step">
+      <div class="cap"><b>1</b><h3>מבט מהיר</h3><span>נפתח מעל הרשת</span></div>
+      <div class="phone">
+        <div class="status">‏9:41<span class="sp">●●●</span></div>
+        <div class="scr">
+          <div class="nav"><h4>מבט מהיר</h4><button class="x">✕</button></div>
+          <div class="ql-photo">
+            <img src="https://picsum.photos/seed/sofa-grey/800/700" alt="">
+            <span class="ql-cat">ריהוט</span>
+          </div>
+          <div class="strip">
+            <img class="on" src="https://picsum.photos/seed/sofa-grey/160/160" alt="">
+            <img src="https://picsum.photos/seed/sofa-b/160/160" alt="">
+            <img src="https://picsum.photos/seed/sofa-c/160/160" alt="">
+            <img src="https://picsum.photos/seed/sofa-d/160/160" alt="">
+          </div>
+          <div class="ql-body">
+            <div class="ql-top"><h2>ספה תלת־מושבית</h2><span class="ql-price">₪850</span></div>
+            <p class="ql-desc">בד אפור, נקייה מאוד. שני כתמים קטנים במושב הימני, כמעט לא מורגשים. מידות: 210 על 90.</p>
+            <div class="facts">
+              <div class="fact"><i>◷</i><span>איסוף בין <b><span dir="ltr">12–18</span> בספטמבר</b></span></div>
+              <div class="fact"><i>◎</i><span>רמת גן · הכתובת המדויקת אחרי התשלום</span></div>
+              <div class="fact"><i>₪</i><span>תשלום בביט · פריט יחיד, אין כמות</span></div>
+            </div>
+          </div>
+          <div class="foot-btn"><button class="btn-primary btn-accent">הוספה לסל</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 2 ─────────────────────────────────────────────── -->
+    <div class="step">
+      <div class="cap"><b>2</b><h3>פרטים ואיסוף</h3><span>יום אחד לכל ההזמנה</span></div>
+      <div class="phone">
+        <div class="status">‏9:43<span class="sp">●●●</span></div>
+        <div class="scr">
+          <div class="nav"><button class="x">→</button><h4>פרטים ואיסוף</h4></div>
+          <div class="pad" style="flex:1; overflow:hidden">
+            <div class="mini"><img src="https://picsum.photos/seed/sofa-grey/120/120" alt=""><span class="n">ספה תלת־מושבית</span><span class="p">₪850</span></div>
+            <div class="mini"><img src="https://picsum.photos/seed/mixer-kitchen/120/120" alt=""><span class="n">מיקסר שולחני</span><span class="p">₪450</span></div>
+            <div class="mini"><img src="https://picsum.photos/seed/headphones-sony/120/120" alt=""><span class="n">אוזניות אלחוטיות</span><span class="p">₪380</span></div>
+            <div class="total"><span>3 פריטים</span><b>₪1,680</b></div>
+
+            <div class="sect">
+              <label class="lbl">שם מלא</label>
+              <input class="fld" value="מיכל אברהמי">
+            </div>
+            <div class="sect">
+              <label class="lbl">טלפון</label>
+              <input class="fld" dir="ltr" style="text-align:right" value="052-741-8830">
+            </div>
+
+            <div class="sect">
+              <label class="lbl">יום איסוף</label>
+              <div class="window-note">שלושת הפריטים חופפים רק בין <b><span dir="ltr">14–18</span> בספטמבר</b> — הימים שמחוץ לחלון סגורים.</div>
+              <div class="days">
+                <div class="day off"><small>ו׳</small><b>12</b></div>
+                <div class="day off"><small>ש׳</small><b>13</b></div>
+                <div class="day"><small>א׳</small><b>14</b></div>
+                <div class="day on"><small>ב׳</small><b>15</b></div>
+                <div class="day"><small>ג׳</small><b>16</b></div>
+                <div class="day"><small>ד׳</small><b>17</b></div>
+                <div class="day"><small>ה׳</small><b>18</b></div>
+              </div>
+              <div class="slots">
+                <div class="slot">בוקר</div>
+                <div class="slot on">אחה״צ</div>
+                <div class="slot">ערב</div>
+              </div>
+            </div>
+          </div>
+          <div class="foot-btn"><button class="btn-primary">שריון הפריטים והמשך</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 3 ─────────────────────────────────────────────── -->
+    <div class="step">
+      <div class="cap"><b>3</b><h3>תשלום בביט</h3><span>החזקה של 15 דקות</span></div>
+      <div class="phone">
+        <div class="status">‏9:44<span class="sp">●●●</span></div>
+        <div class="scr">
+          <div class="nav"><h4>תשלום בביט</h4></div>
+          <div class="timer">
+            <span class="clock">14:32</span>
+            <span class="t"><b>הפריטים שמורים לך</b>אם לא תאשרו תשלום עד אז, הם יחזרו למכירה</span>
+          </div>
+          <div class="pad" style="flex:1">
+            <div class="payline">
+              <span><span class="k">מספר לביט</span><span class="v" dir="ltr">052-419-6677</span></span>
+              <button class="copy">העתקה</button>
+            </div>
+            <div class="payline">
+              <span><span class="k">סכום מדויק</span><span class="v">₪1,680</span></span>
+              <button class="copy">העתקה</button>
+            </div>
+            <div class="payline">
+              <span><span class="k">הערה להעברה</span><span class="v" dir="ltr">YS-4821</span></span>
+              <button class="copy">העתקה</button>
+            </div>
+
+            <ol class="steps">
+              <li><i>1</i><span>פותחים ביט ומעבירים <b>₪1,680</b> למספר שלמעלה.</span></li>
+              <li><i>2</i><span>רושמים <b>YS-4821</b> בהערה — ככה נדע שההעברה שלכם.</span></li>
+              <li><i>3</i><span>חוזרים לכאן ולוחצים <b>שילמתי בביט</b>.</span></li>
+            </ol>
+          </div>
+          <div class="foot-btn">
+            <button class="btn-primary btn-accent">שילמתי בביט</button>
+            <p class="after">אחרי הלחיצה הפריטים נשארים שמורים עד שנאשר את ההעברה, ותקבלו הודעה בוואטסאפ עם הכתובת.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
