@@ -37,6 +37,6 @@ export async function checkout(_prev: CheckoutState, formData: FormData): Promis
     case 'BAD_PICKUP_DATE':
       return { error: 'יום האיסוף שנבחר כבר לא מתאים לכל הפריטים.' }
     case 'SHOP_NOT_OPEN':
-      return { error: 'החנות עדיין לא פתוחה להזמנות' }
+      return { error: 'החנות עדיין לא פתוחה להזמנות.' }
   }
 }

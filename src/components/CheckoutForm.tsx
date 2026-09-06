@@ -1,7 +1,10 @@
 'use client'
 
 import { useActionState, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { checkout, type CheckoutState } from '@/app/checkout/actions'
+import { useCart } from '@/components/CartProvider'
 import { PickupPicker, type PickupPickerItem, type PickupSlotValue } from '@/components/PickupPicker'
 
 const initialState: CheckoutState = {}
@@ -25,9 +28,24 @@ export function CheckoutForm({
   pickupItems: PickupPickerItem[]
   intersection: { from: Date; to: Date; startItemId: string; endItemId: string }
 }) {
+  const router = useRouter()
+  const cart = useCart()
   const [state, formAction, isPending] = useActionState(checkout, initialState)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<PickupSlotValue | null>(null)
+
+  const unavailableIds = state.unavailableItemIds ?? []
+  const unavailableNames = unavailableIds.map((id) => pickupItems.find((item) => item.id === id)?.name ?? id)
+  const remainingAfterUnavailable = itemIds.filter((id) => !unavailableIds.includes(id))
+
+  const continueWithoutUnavailable = () => {
+    for (const id of unavailableIds) cart.remove(id)
+    if (remainingAfterUnavailable.length > 0) {
+      router.push(`/checkout?items=${remainingAfterUnavailable.join(',')}`)
+    } else {
+      router.push('/')
+    }
+  }
 
   return (
     <form action={formAction}>
@@ -35,7 +53,29 @@ export function CheckoutForm({
       <input type="hidden" name="pickupDate" value={selectedDate ?? ''} />
       <input type="hidden" name="pickupSlot" value={selectedSlot ?? ''} />
 
-      {state.error && <p className="checkout-error">{state.error}</p>}
+      {state.error && (
+        <div className="checkout-error">
+          <p>{state.error}</p>
+          {unavailableIds.length > 0 && (
+            <>
+              <ul className="unavailable-list">
+                {unavailableNames.map((name, i) => (
+                  <li key={unavailableIds[i]}>{name}</li>
+                ))}
+              </ul>
+              {remainingAfterUnavailable.length > 0 ? (
+                <button type="button" className="btn-primary" onClick={continueWithoutUnavailable}>
+                  הסרת הפריטים שנמכרו והמשך
+                </button>
+              ) : (
+                <p className="unavailable-empty">
+                  כל הפריטים שבחרתם כבר לא זמינים. <Link href="/">חזרה לחנות</Link>
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="sect">
         <label className="lbl" htmlFor="buyerName">

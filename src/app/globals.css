@@ -311,7 +311,19 @@ header {
   background: var(--accent-soft); color: #9B3A20; border-radius: 13px; padding: 10px 13px;
   font-size: 13.5px; margin-block: 14px 0;
 }
+.checkout-error p { margin: 0; }
+.checkout-error .btn-primary { margin-block-start: 10px; }
+/* the lines the buyer just lost a race on, named so they know what to drop */
+.unavailable-list { list-style: none; margin-block: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.unavailable-list li { font-size: 13.5px; font-weight: 600; }
+.unavailable-empty { margin: 8px 0 0; }
 .empty-cart { color: var(--ink-2); font-size: 14.5px; padding-block: 10px 22px; }
+.cart-load-error {
+  background: var(--accent-soft); border-radius: 16px; padding: 15px; text-align: center;
+  color: #9B3A20; font-size: 14px; margin-block-end: 22px;
+}
+.cart-load-error p { margin: 0; }
+.cart-load-error .btn-primary { margin-block-start: 10px; }
 .closed-note {
   background: #FAF8F6; border-radius: 16px; padding: 15px; text-align: center;
   color: var(--ink-3); font-weight: 600; font-size: 14px; margin-block-end: 22px;
