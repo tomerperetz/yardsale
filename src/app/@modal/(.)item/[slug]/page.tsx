@@ -17,7 +17,7 @@ export default async function ItemQuickLook({ params }: { params: Promise<{ slug
   if (!item) notFound()
 
   return (
-    <QuickLookModal>
+    <QuickLookModal titleId={`item-name-${item.slug}`}>
       <ItemDetail item={item} settings={settings} />
     </QuickLookModal>
   )

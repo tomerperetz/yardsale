@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { Category, Item, Photo } from '@prisma/client'
 import { Price } from '@/components/Price'
-import { Range } from '@/components/Range'
+import { PickupWindow } from '@/components/PickupWindow'
 
 type CardItem = Item & { category: Category; photos: Photo[] }
 
@@ -52,7 +52,7 @@ export function ItemCard({ item }: { item: CardItem }) {
           <div className="foot">
             <Price agorot={item.priceAgorot} className="price" />
             <span className="pick">
-              איסוף <Range from={item.pickupFrom.getUTCDate()} to={item.pickupTo.getUTCDate()} /> בספט׳
+              איסוף <PickupWindow from={item.pickupFrom} to={item.pickupTo} />
             </span>
           </div>
         </Link>

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { Category, Item, Photo, Settings } from '@prisma/client'
 import { Price } from '@/components/Price'
-import { Range } from '@/components/Range'
+import { PickupWindow } from '@/components/PickupWindow'
 
 export type DetailItem = Item & { category: Category; photos: Photo[] }
 
@@ -64,7 +64,7 @@ export function ItemDetail({
 
       <div className="ql-body">
         <div className="ql-top">
-          <h2>{item.name}</h2>
+          <h2 id={`item-name-${item.slug}`}>{item.name}</h2>
           <Price agorot={item.priceAgorot} className="ql-price" />
         </div>
         <p className="ql-desc">{item.description}</p>
@@ -75,7 +75,7 @@ export function ItemDetail({
             <span>
               איסוף בין{' '}
               <b>
-                <Range from={item.pickupFrom.getUTCDate()} to={item.pickupTo.getUTCDate()} /> בספטמבר
+                <PickupWindow from={item.pickupFrom} to={item.pickupTo} />
               </b>
             </span>
           </div>
