@@ -106,8 +106,8 @@ header {
 }
 .price-f input { width: 112px; accent-color: var(--accent); }
 .select-wrap { position: relative; display: inline-flex; align-items: center; }
-.select-chip { appearance: none; padding-inline-start: 32px; }
-.select-chevron { position: absolute; inset-inline-start: 14px; inset-block-start: 50%; transform: translateY(-50%); pointer-events: none; }
+.select-chip { appearance: none; padding-inline-end: 32px; }
+.select-chevron { position: absolute; inset-inline-end: 14px; inset-block-start: 50%; transform: translateY(-50%); pointer-events: none; }
 
 /* ── grid ───────────────────────────────────────────────── */
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); padding-block-end: 130px; }
