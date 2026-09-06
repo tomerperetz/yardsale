@@ -4,27 +4,14 @@ import { useId, useRef, useState } from 'react'
 import { readTakenAt } from '@/lib/exif-client'
 import { convertHeicIfNeeded } from '@/lib/heic-client'
 import { removePhotoAction, reorderPhotosAction } from '@/app/admin/items/actions'
+import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, MAX_REQUEST_BYTES, photoUrl } from '@/lib/photo-url'
 import styles from './admin.module.css'
 
 export type PhotoInfo = { id: string; width: number; height: number; lqip: string; position: number }
 
-// Mirrors src/lib/images.ts (MAX_BYTES, MAX_PHOTOS_PER_ITEM) — that module
-// imports sharp and cannot run in a client component, so the numbers are
-// duplicated here purely to give the seller instant feedback. The upload
-// route enforces the real limits server-side regardless.
-const MAX_BYTES = 12 * 1024 * 1024
-const MAX_PHOTOS_PER_ITEM = 10
-// Mirrors MAX_REQUEST_BYTES in src/app/api/upload/route.ts. Per-file and
-// per-item-count checks above don't catch a batch of several large photos
-// whose combined size still exceeds the request cap — exactly the case a
-// phone upload over mobile data is most likely to hit, so it's worth
-// refusing locally before spending the upload rather than after.
-const MAX_REQUEST_BYTES = 64 * 1024 * 1024
-
-/** `${photoId}-${width}.webp`, inlined because src/lib/images.ts (sharp) can't be imported client-side. */
-function photoSrc(itemId: string, photoId: string, width: 400 | 800 | 1600 = 400): string {
-  return `/img/${itemId}/${photoId}-${width}.webp`
-}
+// The checks below only give the seller instant feedback; POST /api/upload
+// enforces the same limits server-side regardless. Both read them from
+// src/lib/photo-url.ts, so the two can no longer disagree.
 
 /**
  * Photo manager for one item — drag-and-drop on desktop, tap-to-open-the-
@@ -91,6 +78,10 @@ export function PhotoDrop({
       prepared.push({ file: uploadFile, takenAt })
     }
 
+    // Per-file and per-item-count checks don't catch a batch of several large
+    // photos whose combined size still exceeds the request cap — exactly the
+    // case a phone upload over mobile data is most likely to hit, so it's
+    // worth refusing locally before spending the upload rather than after.
     const totalBytes = prepared.reduce((sum, p) => sum + p.file.size, 0)
     if (totalBytes > MAX_REQUEST_BYTES) {
       setErrors([...localErrors, 'הבקשה גדולה מדי. נסו להעלות פחות תמונות בבת אחת.'])
@@ -179,7 +170,7 @@ export function PhotoDrop({
                 handleDropReorder(p.id)
               }}
             >
-              <img src={photoSrc(itemId, p.id)} alt="" style={{ backgroundImage: `url(${p.lqip})` }} />
+              <img src={photoUrl(itemId, p.id)} alt="" style={{ backgroundImage: `url(${p.lqip})` }} />
               <button type="button" className={styles.rm} onClick={() => handleRemove(p.id)} aria-label="הסרת תמונה">
                 ✕
               </button>

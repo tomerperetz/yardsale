@@ -3,6 +3,7 @@ import { OrderStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
+import { photoUrl } from '@/lib/photo-url'
 import { ItemForm } from '@/components/admin/ItemForm'
 import { BulkQueue } from '@/components/admin/BulkQueue'
 import { PickupWindow } from '@/components/PickupWindow'
@@ -161,7 +162,7 @@ export default async function AdminItemsPage({
                             <td>
                               <span className={styles.it}>
                                 {photo ? (
-                                  <img src={`/img/${item.id}/${photo.id}-400.webp`} alt="" />
+                                  <img src={photoUrl(item.id, photo.id)} alt="" />
                                 ) : (
                                   <span
                                     aria-hidden

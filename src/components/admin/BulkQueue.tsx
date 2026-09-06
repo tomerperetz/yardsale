@@ -6,14 +6,8 @@ import { readTakenAt } from '@/lib/exif-client'
 import { convertHeicIfNeeded } from '@/lib/heic-client'
 import { groupByCaptureTime, type PhotoStamp } from '@/lib/exif'
 import { createItemAction } from '@/app/admin/items/actions'
+import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, MAX_REQUEST_BYTES } from '@/lib/photo-url'
 import styles from './admin.module.css'
-
-// Mirrors src/lib/images.ts (MAX_BYTES, MAX_PHOTOS_PER_ITEM) — see PhotoDrop.tsx.
-const MAX_BYTES = 12 * 1024 * 1024
-const MAX_PHOTOS_PER_ITEM = 10
-// Mirrors MAX_REQUEST_BYTES in src/app/api/upload/route.ts — see PhotoDrop.tsx.
-// Checked per group here, since each group is its own POST /api/upload.
-const MAX_REQUEST_BYTES = 64 * 1024 * 1024
 
 type Group = { id: string; keys: string[] }
 type UploadResult = { successCount: number; errors: string[] }
@@ -193,7 +187,8 @@ export function BulkQueue({
 
     // filesByKey already holds HEIC-converted files (conversion happens at
     // drop time in handleFiles), so this sums the bytes actually about to
-    // be sent, not the originals'.
+    // be sent, not the originals'. Checked per group, since each group is
+    // its own POST /api/upload.
     const totalBytes = keysToUpload.reduce((sum, key) => sum + (filesByKey.current.get(key)?.size ?? 0), 0)
 
     let uploadResult: UploadResult = { successCount: 0, errors: localErrors }

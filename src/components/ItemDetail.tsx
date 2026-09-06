@@ -5,6 +5,7 @@ import type { Category, Item, Photo, Settings } from '@prisma/client'
 import { Price } from '@/components/Price'
 import { PickupWindow } from '@/components/PickupWindow'
 import { useCart } from '@/components/CartProvider'
+import { photoUrl } from '@/lib/photo-url'
 
 export type DetailItem = Item & { category: Category; photos: Photo[] }
 
@@ -44,7 +45,7 @@ export function ItemDetail({
         className="ql-photo"
         style={active ? { backgroundImage: `url(${active.lqip})`, backgroundSize: 'cover' } : undefined}
       >
-        {active && <img src={`/img/${item.id}/${active.id}-${PHOTO_WIDTH}.webp`} alt="" />}
+        {active && <img src={photoUrl(item.id, active.id, PHOTO_WIDTH)} alt="" />}
         <span className="ql-cat">{item.category.name}</span>
       </div>
 
@@ -58,7 +59,7 @@ export function ItemDetail({
               onClick={() => setActiveIndex(i)}
               aria-label={`תמונה ${i + 1}`}
             >
-              <img src={`/img/${item.id}/${photo.id}-${THUMB_WIDTH}.webp`} alt="" />
+              <img src={photoUrl(item.id, photo.id, THUMB_WIDTH)} alt="" />
             </button>
           ))}
         </div>

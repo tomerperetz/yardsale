@@ -3,6 +3,7 @@ import { OrderStatus, PickupSlot } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
+import { photoUrl } from '@/lib/photo-url'
 import { SiteHeader } from '@/components/SiteHeader'
 import { Price } from '@/components/Price'
 import { PickupWindow } from '@/components/PickupWindow'
@@ -89,7 +90,7 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
               const photo = line.item.photos[0]
               return (
                 <div key={line.id} className="mini">
-                  {photo && <img src={`/img/${line.item.id}/${photo.id}-400.webp`} alt="" />}
+                  {photo && <img src={photoUrl(line.item.id, photo.id)} alt="" />}
                   <span className="n">{line.item.name}</span>
                   <Price agorot={line.priceAgorot} className="p" />
                 </div>

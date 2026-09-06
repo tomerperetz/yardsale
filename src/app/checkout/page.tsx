@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { getPublicItemsByIds } from '@/lib/items'
 import { getSettings, shopIsOpen } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
+import { photoUrl } from '@/lib/photo-url'
 import { intersectPickupWindows } from '@/lib/dates'
 import { SiteHeader } from '@/components/SiteHeader'
 import { Price } from '@/components/Price'
@@ -93,7 +94,7 @@ export default async function CheckoutPage({
                   const photo = item.photos[0]
                   return (
                     <div key={item.id} className="mini">
-                      {photo && <img src={`/img/${item.id}/${photo.id}-400.webp`} alt="" />}
+                      {photo && <img src={photoUrl(item.id, photo.id)} alt="" />}
                       <span className="n">{item.name}</span>
                       <Price agorot={item.priceAgorot} className="p" />
                     </div>

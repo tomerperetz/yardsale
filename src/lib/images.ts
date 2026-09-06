@@ -1,10 +1,12 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import sharp from 'sharp'
+import { WIDTHS, photoFilename } from '@/lib/photo-url'
 
-export const WIDTHS = [400, 800, 1600] as const
-export const MAX_BYTES = 12 * 1024 * 1024
-export const MAX_PHOTOS_PER_ITEM = 10
+// Re-exported so a caller doing image work has one import: the definitions
+// live in src/lib/photo-url.ts, which client components can import and this
+// module (sharp) cannot be.
+export { WIDTHS, photoFilename }
 
 const MAGIC: [Buffer, 'jpeg' | 'png' | 'webp' | 'heic'][] = [
   [Buffer.from([0xff, 0xd8, 0xff]), 'jpeg'],
@@ -28,10 +30,6 @@ function uploadDir(): string {
 
 export function itemDir(itemId: string): string {
   return path.join(uploadDir(), itemId)
-}
-
-export function photoFilename(photoId: string, width: number): string {
-  return `${photoId}-${width}.webp`
 }
 
 export async function storePhoto(buf: Buffer, itemId: string, photoId: string) {

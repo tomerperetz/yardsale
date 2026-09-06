@@ -5,6 +5,7 @@ import type { Category, Item, Photo } from '@prisma/client'
 import { Price } from '@/components/Price'
 import { PickupWindow } from '@/components/PickupWindow'
 import { useCart } from '@/components/CartProvider'
+import { photoUrl } from '@/lib/photo-url'
 
 type CardItem = Item & { category: Category; photos: Photo[] }
 
@@ -17,7 +18,7 @@ export function ItemCard({ item }: { item: CardItem }) {
   const sold = item.status === 'SOLD'
   const href = `/item/${item.slug}`
   const photo = item.photos[0] as Photo | undefined
-  const photoSrc = photo ? `/img/${item.id}/${photo.id}-800.webp` : undefined
+  const photoSrc = photo ? photoUrl(item.id, photo.id, 800) : undefined
 
   return (
     <article className={sold ? 'card sold' : 'card'}>

@@ -2,14 +2,11 @@ import { randomBytes } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
-import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, deletePhotoFiles, sniffImageType, storePhoto } from '@/lib/images'
+import { deletePhotoFiles, sniffImageType, storePhoto } from '@/lib/images'
+import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, MAX_REQUEST_BYTES } from '@/lib/photo-url'
 
 // Authenticated via src/middleware.ts (matcher includes /api/upload) —
 // an unauthenticated request never reaches this handler.
-
-// Deliberately generous: one itemId, a 10-photo-per-item cap, and phone
-// photos run 2-5 MB, so 64 MB comfortably covers a full batch with headroom.
-const MAX_REQUEST_BYTES = 64 * 1024 * 1024
 
 const itemIdSchema = z.string().min(1)
 
@@ -28,7 +25,7 @@ const takenAtSchema = z
 
 function photoId(): string {
   // Lowercase hex only, so it satisfies the serving route's filename regex
-  // (/^[a-z0-9]+-(400|800|1600)\.webp$/) with no risk of stray characters.
+  // (src/app/img/[itemId]/[file]/route.ts) with no risk of stray characters.
   return randomBytes(12).toString('hex')
 }
 

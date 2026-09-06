@@ -4,6 +4,7 @@ import type { ItemStatus } from '@prisma/client'
 import { getPublicItemsByIds } from '@/lib/items'
 import { getSettings, shopIsOpen } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
+import { photoUrl } from '@/lib/photo-url'
 
 export type CartLine = {
   id: string
@@ -49,7 +50,7 @@ export async function getCartData(
         name: item.name,
         priceAgorot: item.priceAgorot,
         status: item.status,
-        photoUrl: photo ? `/img/${item.id}/${photo.id}-400.webp` : null,
+        photoUrl: photo ? photoUrl(item.id, photo.id) : null,
       },
     ]
   })

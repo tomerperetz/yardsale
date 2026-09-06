@@ -3,6 +3,7 @@ import { OrderStatus, PickupSlot } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
+import { photoUrl } from '@/lib/photo-url'
 import { waLink, messageForOrder } from '@/lib/whatsapp'
 import { Price } from '@/components/Price'
 import { AdminNav } from '@/components/admin/AdminNav'
@@ -190,7 +191,7 @@ export default async function AdminOrdersPage({
                                 {order.items.map((line) => {
                                   const photo = line.item.photos[0]
                                   return photo ? (
-                                    <img key={line.id} src={`/img/${line.item.id}/${photo.id}-400.webp`} alt="" />
+                                    <img key={line.id} src={photoUrl(line.item.id, photo.id)} alt="" />
                                   ) : (
                                     <span key={line.id} aria-hidden="true" className={styles.thumbPlaceholder} />
                                   )
