@@ -105,4 +105,30 @@ describe('reserveItems', () => {
     expect(await reserveItems({ ...base, itemIds: [a.id] }, NOW)).toEqual({ ok: false, reason: 'SHOP_NOT_OPEN' })
     expect(await db.order.count()).toBe(0)
   })
+
+  // Regression for the double-sell in sweep.ts: two buyers racing to reserve an item
+  // held by the same stale, expired hold. Each reserveItems call sweeps the expired
+  // order itself before claiming, so the sweep's own read-then-write must not be able
+  // to steal an item back from whichever checkout wins the race.
+  it('lets only one of two simultaneous checkouts win an item held by an expired hold', async () => {
+    const item = await makeItem({ status: ItemStatus.RESERVED })
+    await makeOrder([item.id], { holdExpiresAt: new Date('2026-09-10T09:00:00Z') })
+
+    const [first, second] = await Promise.all([
+      reserveItems({ ...base, itemIds: [item.id] }, NOW),
+      reserveItems({ ...base, itemIds: [item.id] }, NOW),
+    ])
+
+    expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1)
+
+    const liveHolds = await db.orderItem.count({
+      where: {
+        itemId: item.id,
+        order: { status: { in: [OrderStatus.PENDING_PAYMENT, OrderStatus.CLAIMED_PAID, OrderStatus.PAID] } },
+      },
+    })
+    expect(liveHolds).toBe(1)
+
+    expect((await db.item.findUniqueOrThrow({ where: { id: item.id } })).status).toBe(ItemStatus.RESERVED)
+  })
 })

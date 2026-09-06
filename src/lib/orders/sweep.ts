@@ -12,28 +12,37 @@ type PrismaLike = PrismaClient | Prisma.TransactionClient
  * clock stops and only the seller resolves the order.
  */
 export async function releaseExpiredHolds(client: PrismaLike = defaultDb, now: Date = new Date()): Promise<number> {
-  const expired = await client.order.findMany({
+  // Prisma has no nested transactions, so only wrap when handed a plain client.
+  // The wrap is not dressing: it is what makes the order-first ordering below safe.
+  if ('$transaction' in client) return client.$transaction((tx) => sweep(tx, now))
+  return sweep(client, now)
+}
+
+async function sweep(tx: Prisma.TransactionClient, now: Date): Promise<number> {
+  const candidates = await tx.order.findMany({
     where: { status: OrderStatus.PENDING_PAYMENT, holdExpiresAt: { lt: now } },
     select: { id: true, items: { select: { itemId: true } } },
   })
-  if (expired.length === 0) return 0
+  if (candidates.length === 0) return 0
 
-  const orderIds = expired.map((o) => o.id)
-  const itemIds = expired.flatMap((o) => o.items.map((i) => i.itemId))
+  let expiredCount = 0
+  for (const order of candidates) {
+    // The order row is the mutex. This UPDATE blocks on any concurrent transaction
+    // holding the row, then re-evaluates its WHERE against the committed tuple. If a
+    // concurrent sweep already expired this order, we affect 0 rows and must NOT touch
+    // its items: by then they may legitimately belong to someone else's new order.
+    // The status guard also stops a buyer who tapped "paid" mid-sweep from being expired.
+    const won = await tx.order.updateMany({
+      where: { id: order.id, status: OrderStatus.PENDING_PAYMENT, holdExpiresAt: { lt: now } },
+      data: { status: OrderStatus.EXPIRED, holdExpiresAt: null },
+    })
+    if (won.count === 0) continue
 
-  // Items are released before the order is marked EXPIRED. If the process dies (or the
-  // second call fails) in between, the order is still PENDING_PAYMENT with a past
-  // holdExpiresAt, so the next sweep picks it up again — the item update is then a
-  // harmless no-op since it's guarded on status: RESERVED. Doing it the other way round
-  // would strand RESERVED items on an already-EXPIRED order that no sweep ever revisits.
-  await client.item.updateMany({
-    where: { id: { in: itemIds }, status: ItemStatus.RESERVED },
-    data: { status: ItemStatus.AVAILABLE },
-  })
-  await client.order.updateMany({
-    where: { id: { in: orderIds } },
-    data: { status: OrderStatus.EXPIRED, holdExpiresAt: null },
-  })
-
-  return expired.length
+    await tx.item.updateMany({
+      where: { id: { in: order.items.map((i) => i.itemId) }, status: ItemStatus.RESERVED },
+      data: { status: ItemStatus.AVAILABLE },
+    })
+    expiredCount++
+  }
+  return expiredCount
 }
