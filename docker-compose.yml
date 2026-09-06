@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:16-alpine
+    ports: ['5433:5432']
+    environment:
+      POSTGRES_PASSWORD: yardsale
+      POSTGRES_USER: yardsale
+      POSTGRES_DB: yardsale
+    volumes: ['pgdata:/var/lib/postgresql/data']
+volumes:
+  pgdata:
