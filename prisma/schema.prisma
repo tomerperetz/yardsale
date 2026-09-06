@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Item {
+  id          String      @id @default(cuid())
+  slug        String      @unique // see §7; Hebrew name, hyphenated, + 6-char suffix
+  name        String
+  description String
+  priceAgorot Int
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  pickupFrom  DateTime    @db.Date
+  pickupTo    DateTime    @db.Date
+  status      ItemStatus  @default(DRAFT)
+  sortIndex   Int         @default(0)
+  photos      Photo[]
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([status, sortIndex])
+  @@index([categoryId])
+}
+
+model Photo {
+  id       String    @id @default(cuid())
+  itemId   String
+  item     Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  width    Int
+  height   Int
+  lqip     String // base64 data URI, ~20 bytes of blur
+  position Int       @default(0)
+  takenAt  DateTime? // EXIF DateTimeOriginal, used for bulk grouping
+
+  @@index([itemId, position])
+}
+
+model Category {
+  id    String @id @default(cuid())
+  name  String @unique
+  slug  String @unique
+  items Item[]
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  code          String      @unique // short, human-typeable: "YS-4821"
+  token         String      @unique // 22-char url-safe random, used in URLs
+  buyerName     String
+  buyerPhone    String
+  status        OrderStatus @default(PENDING_PAYMENT)
+  pickupDate    DateTime    @db.Date
+  pickupSlot    PickupSlot
+  totalAgorot   Int
+  holdExpiresAt DateTime? // null once the buyer declares payment
+  claimedAt     DateTime?
+  confirmedAt   DateTime?
+  cancelledAt   DateTime?
+  items         OrderItem[]
+  createdAt     DateTime    @default(now())
+
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id          String @id @default(cuid())
+  orderId     String
+  order       Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        Item   @relation(fields: [itemId], references: [id])
+  priceAgorot Int // snapshot; editing the item never alters a placed order
+
+  @@unique([orderId, itemId])
+  @@index([itemId])
+}
+
+model Settings {
+  id              Int      @id @default(1) // singleton row, always id = 1
+  shopName        String
+  tagline         String
+  bitPhone        String
+  addressLine     String
+  city            String
+  slotMorning     String // e.g. "09:00–12:00"
+  slotAfternoon   String
+  slotEvening     String
+  holdMinutes     Int      @default(15)
+  dismissedMerges String[] @default([]) // "<idA>:<idB>", ids sorted; see §8
+}
+
+enum ItemStatus {
+  DRAFT
+  AVAILABLE
+  RESERVED
+  SOLD
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  CLAIMED_PAID
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+enum PickupSlot {
+  MORNING
+  AFTERNOON
+  EVENING
+}
