@@ -51,7 +51,14 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run build && npm run start',
-    url: BASE_URL,
+    // /admin/login, not BASE_URL itself: readiness only needs "the process
+    // is up and Next is serving," and `/` calls getSettings()
+    // (findUniqueOrThrow) — on a database shared with other concurrent work,
+    // a Settings row that's momentarily missing (see fixtures.ts's seedShop)
+    // would 500 that check and stall the whole run for 180s over something
+    // this suite already handles per-test. /admin/login renders with no DB
+    // read at all.
+    url: `${BASE_URL}/admin/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     // Explicit rather than relying on Next's own standalone .env copying

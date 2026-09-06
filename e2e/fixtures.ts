@@ -2,7 +2,6 @@ import 'dotenv/config'
 import type { BrowserContext } from '@playwright/test'
 import { ItemStatus, OrderStatus, PickupSlot, type Settings } from '@prisma/client'
 import { db } from '../src/lib/db'
-import { seed } from '../prisma/seed'
 import { reserveItems, type ReserveResult } from '../src/lib/orders/reserve'
 import { newOrderCode, newOrderToken } from '../src/lib/orders/codes'
 import { utcDate } from '../src/lib/dates'
@@ -35,33 +34,36 @@ type SettingsOverrides = Partial<
 >
 
 /**
- * Resets the Settings singleton (id=1) to a known "open for business"
- * baseline, then applies overrides — the same pattern tests/db/reserve.test.ts
- * already uses (`openShop()`), since Settings has exactly one row shared by
- * the whole database.
+ * Ensures the Settings singleton (id=1) exists and resets it to a known
+ * "open for business" baseline, then applies overrides — the same pattern
+ * tests/db/reserve.test.ts already uses (`openShop()`), since Settings has
+ * exactly one row shared by the whole database.
  *
- * Deliberately does NOT touch Category/Item/Order/Photo rows and never calls
- * resetDb(): this Postgres instance is shared with other work on this
- * machine, so this suite only ever deletes what it itself created — see
- * cleanupItems/cleanupOrders below.
+ * Upserts that one row directly rather than calling prisma/seed.ts's own
+ * seed() — this suite only needs Settings to exist with specific field
+ * values, and on a database shared with other concurrent work (see
+ * cleanupItems/cleanupOrders below for the same reasoning about Item/Order),
+ * one targeted write per test keeps this to exactly what it depends on
+ * rather than re-running the whole project seed a dozen times per run.
  */
 export async function seedShop(overrides: SettingsOverrides = {}): Promise<void> {
-  await seed()
-  await db.settings.update({
+  const data = {
+    shopName: 'חצר של דנה',
+    tagline: 'הכל חייב לצאת עד יום ראשון',
+    bitPhone: '0501234567',
+    addressLine: 'הרצל 12',
+    city: 'תל אביב',
+    slotMorning: '',
+    slotAfternoon: '',
+    slotEvening: '',
+    holdMinutes: 15,
+    dismissedMerges: [] as string[],
+    ...overrides,
+  }
+  await db.settings.upsert({
     where: { id: 1 },
-    data: {
-      shopName: 'חצר של דנה',
-      tagline: 'הכל חייב לצאת עד יום ראשון',
-      bitPhone: '0501234567',
-      addressLine: 'הרצל 12',
-      city: 'תל אביב',
-      slotMorning: '',
-      slotAfternoon: '',
-      slotEvening: '',
-      holdMinutes: 15,
-      dismissedMerges: [],
-      ...overrides,
-    },
+    update: data,
+    create: { id: 1, ...data },
   })
 }
 

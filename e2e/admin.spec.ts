@@ -27,6 +27,27 @@ test.describe('admin', () => {
     await expect(page).toHaveURL(/\/admin\/items/)
   })
 
+  // Regression: the public header's "ניהול" button links to /admin
+  // (SiteHeader.tsx), which has no page.tsx of its own — only
+  // items/orders/categories/settings do. Signed out, middleware redirects
+  // /admin to /admin/login and nothing is exposed. Signed IN, middleware lets
+  // the request through and Next 404s on the bare /admin route, so the
+  // button a signed-in seller actually clicks led nowhere. Exercised the way
+  // a seller would hit it: from the public grid, through the real header link.
+  test('the header admin button reaches /admin/items when signed in, not a 404', async ({ browser }) => {
+    const context = await browser.newContext({ locale: 'he-IL' })
+    try {
+      await addAdminSession(context)
+      const page = await context.newPage()
+
+      await page.goto('/')
+      await page.getByRole('link', { name: 'ניהול' }).click()
+      await expect(page).toHaveURL(/\/admin\/items/)
+    } finally {
+      await context.close()
+    }
+  })
+
   test('confirming a CLAIMED_PAID order marks its item sold on the storefront', async ({ browser }) => {
     const { item, order } = await makeClaimedOrder({ name: 'שולחן אוכל', price: 120000, category: 'ריהוט' })
 
