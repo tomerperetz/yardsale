@@ -98,6 +98,16 @@ header {
 .chip:hover { background: #fff; transform: translateY(-1px); }
 .chip.on { background: var(--ink); color: #fff; border-color: var(--ink); font-weight: 600; }
 .spacer { margin-inline-start: auto; }
+/* the form's own box is invisible; its children flow as regular .frow items */
+.filter-form { display: contents; }
+.price-f {
+  display: flex; align-items: center; gap: 11px; background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; font-size: 13.5px; color: var(--ink-2);
+}
+.price-f input { width: 112px; accent-color: var(--accent); }
+.select-wrap { position: relative; display: inline-flex; align-items: center; }
+.select-chip { appearance: none; padding-inline-start: 32px; }
+.select-chevron { position: absolute; inset-inline-start: 14px; inset-block-start: 50%; transform: translateY(-50%); pointer-events: none; }
 
 /* ── grid ───────────────────────────────────────────────── */
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); padding-block-end: 130px; }

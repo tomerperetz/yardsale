@@ -30,7 +30,7 @@ export function ItemCard({ item }: { item: CardItem }) {
         {sold ? (
           <div className="sold-tag">נמכר</div>
         ) : (
-          <button type="button" className="add" aria-label="הוספה לסל">
+          <button type="button" className="add" aria-label={`הוספה מהירה: ${item.name}`}>
             +
           </button>
         )}
