@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getPublicItem } from '@/lib/items'
 import { getSettings } from '@/lib/settings'
+import { decodeSlugParam } from '@/lib/slug'
 import { SiteHeader } from '@/components/SiteHeader'
 import { ItemDetail } from '@/components/ItemDetail'
 
@@ -11,7 +12,7 @@ import { ItemDetail } from '@/components/ItemDetail'
  */
 export default async function ItemPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const [item, settings] = await Promise.all([getPublicItem(slug), getSettings()])
+  const [item, settings] = await Promise.all([getPublicItem(decodeSlugParam(slug)), getSettings()])
   if (!item) notFound()
 
   return (

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getPublicItem } from '@/lib/items'
 import { getSettings } from '@/lib/settings'
+import { decodeSlugParam } from '@/lib/slug'
 import { ItemDetail } from '@/components/ItemDetail'
 import { QuickLookModal } from '@/components/QuickLookModal'
 
@@ -13,7 +14,7 @@ import { QuickLookModal } from '@/components/QuickLookModal'
  */
 export default async function ItemQuickLook({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const [item, settings] = await Promise.all([getPublicItem(slug), getSettings()])
+  const [item, settings] = await Promise.all([getPublicItem(decodeSlugParam(slug)), getSettings()])
   if (!item) notFound()
 
   return (

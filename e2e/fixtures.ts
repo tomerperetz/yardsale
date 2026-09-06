@@ -5,6 +5,7 @@ import { db } from '../src/lib/db'
 import { reserveItems, type ReserveResult } from '../src/lib/orders/reserve'
 import { newOrderCode, newOrderToken } from '../src/lib/orders/codes'
 import { utcDate } from '../src/lib/dates'
+import { hebrewSlug, randomSuffix } from '../src/lib/slug'
 import { SESSION_COOKIE, signSession } from '../src/lib/auth'
 import { BASE_URL } from '../playwright.config'
 
@@ -97,6 +98,31 @@ export async function makeAvailableItem(input: AvailableItemInput) {
     data: {
       slug: `e2e-${s}`,
       name: `${input.name} ${s}`,
+      description: 'פריט לבדיקה אוטומטית של המערכת',
+      priceAgorot: input.price,
+      categoryId: category.id,
+      pickupFrom: input.pickupFrom ?? utcDate(2026, 9, 12),
+      pickupTo: input.pickupTo ?? utcDate(2026, 9, 18),
+      status: ItemStatus.AVAILABLE,
+    },
+  })
+}
+
+/**
+ * Same as `makeAvailableItem`, but the slug is the app's real `hebrewSlug`
+ * output instead of every other fixture item's ASCII `e2e-<n>` shortcut.
+ * Needed to exercise an actual Hebrew, percent-encoded-in-the-URL slug —
+ * see task-14 fix round 2, where every real (hebrewSlug-generated) item
+ * page 404'd and this suite's own ASCII-slugged fixtures never caught it.
+ */
+export async function makeAvailableItemWithHebrewSlug(input: AvailableItemInput) {
+  const category = await categoryByName(input.category)
+  const s = uniq()
+  const name = `${input.name} ${s}`
+  return db.item.create({
+    data: {
+      slug: hebrewSlug(name, randomSuffix()),
+      name,
       description: 'פריט לבדיקה אוטומטית של המערכת',
       priceAgorot: input.price,
       categoryId: category.id,

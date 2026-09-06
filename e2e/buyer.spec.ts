@@ -1,9 +1,48 @@
 import { test, expect } from '@playwright/test'
-import { seedShop, makeAvailableItem, reserveOutOfBand, cleanupItems, cleanupOrders } from './fixtures'
+import {
+  seedShop,
+  makeAvailableItem,
+  makeAvailableItemWithHebrewSlug,
+  reserveOutOfBand,
+  cleanupItems,
+  cleanupOrders,
+} from './fixtures'
 
 test.describe('buyer journey', () => {
   test.beforeEach(async () => {
     await seedShop()
+  })
+
+  // Regression for task-14 fix round 2: every real item page 404'd, because
+  // the route never decoded params.slug — Next hands it over still
+  // percent-encoded, and a Hebrew slug is never ASCII-identical to its own
+  // percent-encoding the way this suite's other, ASCII-slugged fixture items
+  // happen to be. Asserting only `toHaveURL(/\/item\//)` (as the rest of
+  // this file already did) is exactly why it shipped: the URL was right and
+  // the page underneath it was a 404. This asserts the item's name is
+  // actually rendered, through both the quick-look overlay (a soft
+  // navigation, intercepted by @modal) and the standalone page (a hard
+  // navigation/reload) — two separate route files, either of which could
+  // regress independently.
+  test('a hebrew-slugged item page renders instead of 404ing', async ({ page }) => {
+    const chair = await makeAvailableItemWithHebrewSlug({ name: 'כיסא נדנדה', price: 32000, category: 'ריהוט' })
+
+    try {
+      await page.goto('/')
+      await page.getByText(chair.name).click()
+      await expect(page).toHaveURL(/\/item\//)
+      // Scoped to the dialog: the grid card behind the overlay repeats the
+      // same name, so an unscoped getByText would match both and fail on
+      // strict-mode ambiguity even when the overlay itself is correct.
+      await expect(page.getByRole('dialog').getByText(chair.name)).toBeVisible()
+
+      // A hard navigation/reload drops the grid entirely — only the
+      // standalone /item/[slug] page (no @modal overlay) is on screen now.
+      await page.reload()
+      await expect(page.getByText(chair.name)).toBeVisible()
+    } finally {
+      await cleanupItems([chair.id])
+    }
   })
 
   test('a buyer can filter, add to cart and reach the payment page', async ({ page }) => {

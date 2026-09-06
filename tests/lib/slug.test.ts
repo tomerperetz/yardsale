@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hebrewSlug, randomSuffix } from '@/lib/slug'
+import { decodeSlugParam, hebrewSlug, randomSuffix } from '@/lib/slug'
 
 describe('hebrewSlug', () => {
   it('keeps hebrew letters and hyphenates whitespace', () => {
@@ -26,6 +26,21 @@ describe('hebrewSlug', () => {
     const slug = hebrewSlug('א'.repeat(200), 'eeeeee')
     expect(slug.length).toBeLessThanOrEqual(87)
     expect(slug.endsWith('-eeeeee')).toBe(true)
+  })
+})
+
+describe('decodeSlugParam', () => {
+  it('decodes a percent-encoded Hebrew slug, the shape a route param arrives in', () => {
+    const encoded = encodeURIComponent('ספה-תלת-מושבית-0522eb')
+    expect(decodeSlugParam(encoded)).toBe('ספה-תלת-מושבית-0522eb')
+  })
+
+  it('leaves a plain ascii slug unchanged', () => {
+    expect(decodeSlugParam('sony-wh-1000xm4-bbbbbb')).toBe('sony-wh-1000xm4-bbbbbb')
+  })
+
+  it('falls back to the raw value instead of throwing on a malformed escape', () => {
+    expect(decodeSlugParam('50%-off')).toBe('50%-off')
   })
 })
 
