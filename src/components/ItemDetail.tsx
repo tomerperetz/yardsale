@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { Category, Item, Photo, Settings } from '@prisma/client'
 import { Price } from '@/components/Price'
 import { PickupWindow } from '@/components/PickupWindow'
+import { useCart } from '@/components/CartProvider'
 
 export type DetailItem = Item & { category: Category; photos: Photo[] }
 
@@ -27,6 +28,7 @@ export function ItemDetail({
   item: DetailItem
   settings: Pick<Settings, 'addressLine' | 'city'>
 }) {
+  const cart = useCart()
   const [activeIndex, setActiveIndex] = useState(0)
   const sold = item.status === 'SOLD'
   const photos = item.photos
@@ -96,7 +98,7 @@ export function ItemDetail({
         {sold ? (
           <p className="sold-note">הפריט נמכר</p>
         ) : (
-          <button type="button" className="btn-primary btn-accent">
+          <button type="button" className="btn-primary btn-accent" onClick={() => cart.add(item.id)}>
             הוספה לסל
           </button>
         )}

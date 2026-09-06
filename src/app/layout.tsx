@@ -1,5 +1,6 @@
 import './globals.css'
 import type { ReactNode } from 'react'
+import { CartProvider } from '@/components/CartProvider'
 
 export default function RootLayout({
   children,
@@ -19,8 +20,10 @@ export default function RootLayout({
         />
       </head>
       <body>
-        {children}
-        {modal}
+        <CartProvider>
+          {children}
+          {modal}
+        </CartProvider>
       </body>
     </html>
   )

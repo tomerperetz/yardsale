@@ -206,10 +206,12 @@ header {
 
 .foot-btn { padding-block: 14px 18px; padding-inline: 18px; }
 .btn-primary {
-  width: 100%; border: 0; border-radius: 16px; padding: 15px; font: inherit; font-weight: 700;
-  font-size: 16px; cursor: pointer; background: var(--ink); color: #fff; transition: 0.18s;
+  display: block; width: 100%; border: 0; border-radius: 16px; padding: 15px; font: inherit; font-weight: 700;
+  font-size: 16px; text-align: center; cursor: pointer; background: var(--ink); color: #fff; transition: 0.18s;
 }
 .btn-primary:hover { background: #000; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary:disabled:hover { background: var(--ink); }
 .btn-accent { background: var(--accent); }
 .btn-accent:hover { background: #C8452B; }
 .sold-note {
@@ -241,3 +243,77 @@ header {
   .modal-backdrop { padding: 0; align-items: flex-end; }
   .modal-panel { max-width: none; max-height: 92vh; border-radius: 26px 26px 0 0; }
 }
+
+/* ── cart & checkout ────────────────────────────────────────
+   Styling lifted from docs/design/mockups/02-buyer-flow.html, panel 2
+   ("פרטים ואיסוף") — the cart is a wishlist, never a hold, so both pages
+   share the same card-on-a-page layout as the item detail above. */
+.cart-page, .checkout-page { padding-block: 40px 100px; display: flex; justify-content: center; }
+.cart-card, .checkout-card {
+  max-width: 460px; width: 100%; background: var(--card);
+  border-radius: var(--r-lg); box-shadow: var(--sh-2); padding: 22px 24px 4px;
+}
+.cart-card h2, .checkout-card h2 { font-size: 20px; margin: 0 0 6px; letter-spacing: -0.02em; }
+/* the card already carries its own inline padding, unlike .item-page .detail */
+.cart-card .foot-btn, .checkout-card .foot-btn { padding-inline: 0; }
+
+.mini { display: flex; align-items: center; gap: 11px; padding-block: 10px; border-block-end: 1px solid var(--line); }
+.mini img { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; flex: none; }
+.mini .n { font-size: 14.5px; font-weight: 600; margin-inline-end: auto; }
+.mini .p { font-size: 14.5px; font-weight: 700; }
+.mini .p.sold { color: var(--ink-3); text-decoration: line-through; font-weight: 600; font-size: 13px; }
+.mini-remove {
+  border: 0; background: none; cursor: pointer; color: var(--ink-3); font-size: 14px;
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none; padding: 0;
+}
+.mini-remove:hover { background: #F2EFEC; color: var(--ink); }
+
+.total { display: flex; align-items: baseline; padding-block: 13px 4px; }
+.total span { font-size: 14px; color: var(--ink-2); margin-inline-end: auto; }
+.total-price { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
+
+.sect { margin-block-start: 17px; }
+.lbl { font-size: 12.5px; font-weight: 600; color: var(--ink-3); display: block; margin-block-end: 6px; letter-spacing: 0.02em; }
+.fld {
+  width: 100%; border: 1px solid var(--line); border-radius: 13px; padding-block: 12px; padding-inline: 14px;
+  font: inherit; font-size: 15px; background: #FAF8F6; color: var(--ink);
+}
+.fld::placeholder { color: #B8AFA7; }
+.fld-phone { text-align: end; }
+
+.window-note {
+  background: var(--accent-soft); border-radius: 13px; padding: 10px 13px; font-size: 13px;
+  color: #9B3A20; margin-block-end: 12px; line-height: 1.45;
+}
+
+.days { display: flex; gap: 7px; overflow: hidden; }
+.day {
+  flex: 1; border: 1px solid var(--line); background: #FAF8F6; border-radius: 13px; padding-block: 9px;
+  padding-inline: 0; text-align: center; cursor: pointer; transition: 0.16s; min-width: 0; font: inherit; color: inherit;
+}
+.day small { display: block; font-size: 11px; color: var(--ink-3); margin-block-end: 1px; }
+.day b { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+.day:hover:not(:disabled) { border-color: var(--ink-3); }
+.day.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.day.on small { color: rgba(255, 255, 255, 0.6); }
+.day.off, .day:disabled { opacity: 0.34; cursor: not-allowed; background: transparent; }
+.day.off b, .day:disabled b { text-decoration: line-through; }
+
+.slots { display: flex; gap: 7px; margin-block-start: 9px; }
+.slot {
+  flex: 1; border: 1px solid var(--line); background: #FAF8F6; border-radius: 13px; padding-block: 10px;
+  padding-inline: 0; text-align: center; font-size: 13.5px; font-weight: 600; cursor: pointer; color: var(--ink-2);
+  font-family: inherit;
+}
+.slot.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+.checkout-error {
+  background: var(--accent-soft); color: #9B3A20; border-radius: 13px; padding: 10px 13px;
+  font-size: 13.5px; margin-block: 14px 0;
+}
+.empty-cart { color: var(--ink-2); font-size: 14.5px; padding-block: 10px 22px; }
+.closed-note {
+  background: #FAF8F6; border-radius: 16px; padding: 15px; text-align: center;
+  color: var(--ink-3); font-weight: 600; font-size: 14px; margin-block-end: 22px;
+}
+.split-actions { display: flex; flex-direction: column; gap: 9px; margin-block: 14px 22px; }

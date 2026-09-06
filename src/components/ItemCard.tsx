@@ -1,7 +1,10 @@
+'use client'
+
 import Link from 'next/link'
 import type { Category, Item, Photo } from '@prisma/client'
 import { Price } from '@/components/Price'
 import { PickupWindow } from '@/components/PickupWindow'
+import { useCart } from '@/components/CartProvider'
 
 type CardItem = Item & { category: Category; photos: Photo[] }
 
@@ -10,6 +13,7 @@ type CardItem = Item & { category: Category; photos: Photo[] }
  * sold items stay inline, desaturated, and are never links — see task-13 brief §7.
  */
 export function ItemCard({ item }: { item: CardItem }) {
+  const cart = useCart()
   const sold = item.status === 'SOLD'
   const href = `/item/${item.slug}`
   const photo = item.photos[0] as Photo | undefined
@@ -30,7 +34,12 @@ export function ItemCard({ item }: { item: CardItem }) {
         {sold ? (
           <div className="sold-tag">נמכר</div>
         ) : (
-          <button type="button" className="add" aria-label={`הוספה מהירה: ${item.name}`}>
+          <button
+            type="button"
+            className="add"
+            aria-label={`הוספה מהירה: ${item.name}`}
+            onClick={() => cart.add(item.id)}
+          >
             +
           </button>
         )}
