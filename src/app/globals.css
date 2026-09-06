@@ -248,14 +248,14 @@ header {
    Styling lifted from docs/design/mockups/02-buyer-flow.html, panel 2
    ("פרטים ואיסוף") — the cart is a wishlist, never a hold, so both pages
    share the same card-on-a-page layout as the item detail above. */
-.cart-page, .checkout-page { padding-block: 40px 100px; display: flex; justify-content: center; }
-.cart-card, .checkout-card {
+.cart-page, .checkout-page, .pay-page, .order-page { padding-block: 40px 100px; display: flex; justify-content: center; }
+.cart-card, .checkout-card, .pay-card, .order-card {
   max-width: 460px; width: 100%; background: var(--card);
   border-radius: var(--r-lg); box-shadow: var(--sh-2); padding: 22px 24px 4px;
 }
-.cart-card h2, .checkout-card h2 { font-size: 20px; margin: 0 0 6px; letter-spacing: -0.02em; }
+.cart-card h2, .checkout-card h2, .pay-card h2, .order-card h2 { font-size: 20px; margin: 0 0 6px; letter-spacing: -0.02em; }
 /* the card already carries its own inline padding, unlike .item-page .detail */
-.cart-card .foot-btn, .checkout-card .foot-btn { padding-inline: 0; }
+.cart-card .foot-btn, .checkout-card .foot-btn, .pay-card .foot-btn { padding-inline: 0; }
 
 .mini { display: flex; align-items: center; gap: 11px; padding-block: 10px; border-block-end: 1px solid var(--line); }
 .mini img { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; flex: none; }
@@ -329,3 +329,63 @@ header {
   color: var(--ink-3); font-weight: 600; font-size: 14px; margin-block-end: 22px;
 }
 .split-actions { display: flex; flex-direction: column; gap: 9px; margin-block: 14px 22px; }
+
+/* ── payment ────────────────────────────────────────────────
+   Styling lifted from docs/design/mockups/02-buyer-flow.html, panel 3
+   ("תשלום בביט") — shares the same card-on-a-page layout declared above. */
+.timer {
+  margin-block-end: 15px; background: var(--ink); color: #fff; border-radius: 18px; padding: 15px 17px;
+  display: flex; align-items: center; gap: 13px;
+}
+.timer .clock { font-size: 25px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.timer .t { font-size: 13px; color: rgba(255, 255, 255, 0.66); line-height: 1.4; }
+.timer .t b { color: #fff; display: block; font-size: 14px; font-weight: 600; }
+
+.payline {
+  display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); background: #FAF8F6;
+  border-radius: 15px; padding: 13px 15px; margin-block-end: 9px;
+}
+.payline .k { font-size: 12.5px; color: var(--ink-3); display: block; }
+.payline .v { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; margin-inline-end: auto; }
+.copy {
+  border: 1px solid var(--line); background: #fff; border-radius: 11px; padding: 8px 13px;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--ink-2); flex: none;
+}
+.copy:hover { color: var(--ink); border-color: var(--ink-3); }
+
+.steps { list-style: none; padding: 0; margin-block: 16px 0; display: flex; flex-direction: column; gap: 11px; }
+.steps li { display: flex; gap: 11px; font-size: 14px; color: var(--ink-2); line-height: 1.45; }
+.steps i {
+  width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: #fff; flex: none;
+  font-style: normal; font-size: 12px; font-weight: 700; display: grid; place-items: center; margin-block-start: 2px;
+}
+.steps b { color: var(--ink); font-weight: 600; }
+.after { font-size: 12.5px; color: var(--ink-3); text-align: center; padding-block-start: 11px; line-height: 1.5; }
+
+/* the missing-bitPhone notice and the claimPaid action's returned message
+   share this: a calm, neutral note — never styled as an alarming error,
+   since one of the three possible messages is pure reassurance */
+.pay-note {
+  background: #FAF8F6; border-radius: 13px; padding: 10px 13px; font-size: 13.5px;
+  color: var(--ink-2); margin-block: 12px 0;
+}
+.pay-waiting, .pay-over {
+  background: #FAF8F6; border-radius: 16px; padding: 18px; text-align: center; margin-block: 6px 22px;
+}
+.pay-waiting p, .pay-over p { margin: 0 0 12px; color: var(--ink-2); font-size: 14.5px; font-weight: 600; }
+
+/* ── order status ───────────────────────────────────────────
+   /o/[token]: no mockup panel of its own, so it reuses the item-detail
+   .facts/.fact rows and the cart/checkout .mini/.total lines rather than
+   inventing a new visual language. */
+.order-card h2 { margin-block-end: 10px; }
+.order-card .cart-lines { margin-block-start: 4px; }
+.order-card .facts { margin-block-start: 17px; padding-block-end: 18px; }
+.status-pill {
+  display: inline-flex; align-items: center; border-radius: 999px; padding: 7px 15px;
+  font-size: 13.5px; font-weight: 700; margin-block-end: 14px;
+}
+.status-pill.status-pending { background: var(--accent-soft); color: #9B3A20; }
+.status-pill.status-claimed { background: #FDF3D9; color: #8A6A1A; }
+.status-pill.status-paid { background: #E4F5E9; color: #1F7A3D; }
+.status-pill.status-over { background: #F2EFEC; color: var(--ink-3); }
