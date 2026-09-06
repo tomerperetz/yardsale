@@ -65,4 +65,22 @@ describe('releaseExpiredHolds', () => {
     expect(await releaseExpiredHolds(db, NOW)).toBe(1)
     expect(await releaseExpiredHolds(db, NOW)).toBe(0)
   })
+
+  // Candidates are ordered by id so every sweep takes its order-row locks in
+  // the same sequence. Two sweeps taking the same locks in opposite orders
+  // deadlock (40P01), and since the sweep runs inside reserveItems'
+  // transaction the victim is a buyer whose checkout throws.
+  it('survives several sweeps running at once over the same stale orders', async () => {
+    for (let i = 0; i < 6; i++) {
+      const item = await makeItem({ status: ItemStatus.RESERVED })
+      await makeOrder([item.id], { holdExpiresAt: PAST })
+    }
+
+    const results = await Promise.all(Array.from({ length: 4 }, () => releaseExpiredHolds(db, NOW)))
+
+    // Exactly one sweep expires each order; the rest find nothing left to do.
+    expect(results.reduce((sum, n) => sum + n, 0)).toBe(6)
+    expect(await db.order.count({ where: { status: OrderStatus.EXPIRED } })).toBe(6)
+    expect(await db.item.count({ where: { status: ItemStatus.RESERVED } })).toBe(0)
+  })
 })

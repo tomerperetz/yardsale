@@ -15,9 +15,20 @@ export type ReserveInput = {
 export type ReserveResult =
   | { ok: true; code: string; token: string; totalAgorot: number; holdExpiresAt: Date }
   | { ok: false; reason: 'EMPTY_CART' }
+  | { ok: false; reason: 'TOO_MANY_ITEMS' }
   | { ok: false; reason: 'UNAVAILABLE'; unavailableItemIds: string[] }
   | { ok: false; reason: 'BAD_PICKUP_DATE' }
   | { ok: false; reason: 'SHOP_NOT_OPEN' }
+
+/**
+ * Checkout is unauthenticated and item ids are public — they appear in every
+ * /img/<itemId>/… URL — so without a cap one caller could POST the whole
+ * catalogue and hold the entire shop RESERVED for a full hold window. A
+ * household clear-out is a few dozen items in total; twenty in one order is
+ * already more than any real buyer carries away in one trip, and it keeps a
+ * single request from ever locking the shop.
+ */
+export const MAX_ITEMS_PER_ORDER = 20
 
 class Abort extends Error {
   constructor(readonly result: ReserveResult) {
@@ -28,6 +39,9 @@ class Abort extends Error {
 export async function reserveItems(input: ReserveInput, now: Date = new Date()): Promise<ReserveResult> {
   const itemIds = [...new Set(input.itemIds)]
   if (itemIds.length === 0) return { ok: false, reason: 'EMPTY_CART' }
+  // Counted after the dedupe, and here rather than in the action, so no caller
+  // of reserveItems can skip it.
+  if (itemIds.length > MAX_ITEMS_PER_ORDER) return { ok: false, reason: 'TOO_MANY_ITEMS' }
 
   // The code collision retry wraps the whole transaction, not just the order.create
   // inside it: `code` is only 4 digits, so collisions happen, but Postgres aborts the

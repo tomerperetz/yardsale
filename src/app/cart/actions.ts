@@ -3,6 +3,7 @@
 import type { ItemStatus } from '@prisma/client'
 import { getPublicItemsByIds } from '@/lib/items'
 import { getSettings, shopIsOpen } from '@/lib/settings'
+import { releaseExpiredHolds } from '@/lib/orders/sweep'
 
 export type CartLine = {
   id: string
@@ -23,6 +24,11 @@ export type CartLine = {
 export async function getCartData(
   ids: string[],
 ): Promise<{ items: CartLine[]; shopOpen: boolean; shopName: string; tagline: string }> {
+  // The cart reads each item's live status to show "נתפס", so it is an
+  // availability read like any other and opens with the sweep — otherwise a
+  // lapsed hold marks an item taken when nobody owns it. See src/app/page.tsx.
+  await releaseExpiredHolds()
+
   const uniqueIds = [...new Set(ids)]
 
   const [found, settings] = await Promise.all([

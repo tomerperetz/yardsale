@@ -19,7 +19,9 @@ export default async function ItemQuickLook({ params }: { params: Promise<{ slug
 
   return (
     <QuickLookModal titleId={`item-name-${item.slug}`}>
-      <ItemDetail item={item} settings={settings} />
+      {/* Narrowed to the fields ItemDetail declares — see the note in
+          src/app/item/[slug]/page.tsx. */}
+      <ItemDetail item={item} settings={{ addressLine: settings.addressLine, city: settings.city }} />
     </QuickLookModal>
   )
 }

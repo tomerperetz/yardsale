@@ -3,7 +3,7 @@ import { ItemStatus, OrderStatus, PickupSlot } from '@prisma/client'
 import { db } from '@/lib/db'
 import { resetDb } from '../helpers/db'
 import { makeItem, makeOrder } from '../helpers/factories'
-import { reserveItems } from '@/lib/orders/reserve'
+import { MAX_ITEMS_PER_ORDER, reserveItems } from '@/lib/orders/reserve'
 import { utcDate } from '@/lib/dates'
 import { seed } from '../../prisma/seed'
 
@@ -97,6 +97,25 @@ describe('reserveItems', () => {
 
   it('rejects an empty cart', async () => {
     expect(await reserveItems({ ...base, itemIds: [] }, NOW)).toEqual({ ok: false, reason: 'EMPTY_CART' })
+  })
+
+  // Checkout is unauthenticated and item ids are public, so an uncapped order
+  // lets one caller hold the whole shop RESERVED for a full hold window.
+  it('refuses an order larger than the per-order cap, reserving nothing', async () => {
+    const items = []
+    for (let i = 0; i < MAX_ITEMS_PER_ORDER + 1; i++) items.push(await makeItem())
+
+    const r = await reserveItems({ ...base, itemIds: items.map((i) => i.id) }, NOW)
+
+    expect(r).toEqual({ ok: false, reason: 'TOO_MANY_ITEMS' })
+    expect(await db.order.count()).toBe(0)
+    expect(await db.item.count({ where: { status: ItemStatus.RESERVED } })).toBe(0)
+  })
+
+  it('counts the cap after de-duplicating, so a repeated id is not a bigger order', async () => {
+    const item = await makeItem()
+    const r = await reserveItems({ ...base, itemIds: Array(MAX_ITEMS_PER_ORDER + 5).fill(item.id) }, NOW)
+    expect(r.ok).toBe(true)
   })
 
   it('refuses to take orders while the BIT number is unset', async () => {

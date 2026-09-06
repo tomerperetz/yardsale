@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { getPublicItemsByIds } from '@/lib/items'
 import { getSettings, shopIsOpen } from '@/lib/settings'
+import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { intersectPickupWindows } from '@/lib/dates'
 import { SiteHeader } from '@/components/SiteHeader'
 import { Price } from '@/components/Price'
@@ -19,6 +20,11 @@ export default async function CheckoutPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  // This page filters on status === 'AVAILABLE', so without the sweep a
+  // lapsed hold nobody owns makes a free item vanish behind "אין פריטים
+  // זמינים לתשלום" — see src/app/page.tsx for why every read path opens here.
+  await releaseExpiredHolds()
+
   const params = await searchParams
   const itemsParam = params.items
   const requestedIds = [...new Set((Array.isArray(itemsParam) ? itemsParam[0] : itemsParam ?? '').split(',').filter(Boolean))]

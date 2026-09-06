@@ -22,6 +22,12 @@ async function sweep(tx: Prisma.TransactionClient, now: Date): Promise<number> {
   const candidates = await tx.order.findMany({
     where: { status: OrderStatus.PENDING_PAYMENT, holdExpiresAt: { lt: now } },
     select: { id: true, items: { select: { itemId: true } } },
+    // Every sweep takes its order-row locks in the same order. Without this,
+    // two concurrent sweeps can take the same two locks in opposite orders and
+    // deadlock (40P01) — and because the sweep runs inside reserveItems'
+    // transaction, the victim is a buyer whose checkout throws rather than
+    // returning a result they can act on.
+    orderBy: { id: 'asc' },
   })
   if (candidates.length === 0) return 0
 
