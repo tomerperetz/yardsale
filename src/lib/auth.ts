@@ -40,6 +40,16 @@ export function readSession(raw: string | undefined, now: number = Date.now()): 
 export async function verifyAdminPassword(password: string): Promise<boolean> {
   const hash = process.env.ADMIN_PASSWORD_HASH
   if (!hash) throw new Error('ADMIN_PASSWORD_HASH is not set')
+  // A well-formed argon2id hash always starts with $argon2. Anything else is
+  // almost certainly a deploy misconfiguration — most commonly Next.js's env
+  // loader interpolating $VAR syntax and mangling an unescaped hash — so fail
+  // loud here rather than silently rejecting every password forever.
+  if (!hash.startsWith('$argon2')) {
+    throw new Error(
+      'ADMIN_PASSWORD_HASH looks corrupted (does not start with "$argon2"). If it was pasted into ' +
+        '.env, escape every "$" as "\\$" — Next.js interpolates $VAR syntax in env files.',
+    )
+  }
   try {
     return await verify(hash, password)
   } catch {

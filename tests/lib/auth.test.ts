@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { signSession, readSession } from '@/lib/auth'
+import { signSession, readSession, verifyAdminPassword } from '@/lib/auth'
 
 const DAY = 86_400_000
 
@@ -36,5 +36,19 @@ describe('session cookie', () => {
     expect(readSession(undefined)).toBe(false)
     expect(readSession('nonsense')).toBe(false)
     expect(readSession('a.b.c')).toBe(false)
+  })
+})
+
+describe('verifyAdminPassword', () => {
+  it('throws loudly when ADMIN_PASSWORD_HASH looks corrupted', async () => {
+    const original = process.env.ADMIN_PASSWORD_HASH
+    // Missing the $argon2 prefix — the shape a hash takes after Next.js's
+    // env loader mangles an unescaped "$" in it.
+    process.env.ADMIN_PASSWORD_HASH = '=19=19456,t=2,p=1+oZcMX0Bs'
+    try {
+      await expect(verifyAdminPassword('anything')).rejects.toThrow(/escap/i)
+    } finally {
+      process.env.ADMIN_PASSWORD_HASH = original
+    }
   })
 })
