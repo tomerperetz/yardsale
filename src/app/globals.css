@@ -73,6 +73,8 @@ header {
   min-width: 21px; height: 21px; display: grid; place-items: center; font-size: 12.5px; padding-inline: 5px;
 }
 .btn-ghost { background: rgba(255, 255, 255, 0.7); }
+/* dark pill variant, composable with .btn — e.g. admin's "next" buttons */
+.btn-dark { background: var(--ink); color: #fff; }
 
 /* ── hero ───────────────────────────────────────────────── */
 .hero { padding-block: 52px 34px; max-width: 640px; }

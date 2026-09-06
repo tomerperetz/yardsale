@@ -1,0 +1,215 @@
+/*
+ * Page-level chrome for /admin/items and /admin/items/[id]. No sidebar nav
+ * here — Task 19 owns AdminNav.tsx and the orders/categories/settings routes
+ * it would link to, so this page stands alone rather than faking links to
+ * pages that don't exist yet. The header/.bar/.brand/.mark and .wrap
+ * container come straight from globals.css, shared with the buyer site.
+ */
+
+.shell {
+  padding-block: 26px 60px;
+}
+
+.panel {
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+  padding: 24px;
+  margin-block-end: 22px;
+}
+
+.ptitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-block-end: 4px;
+  flex-wrap: wrap;
+}
+.ptitle h2 {
+  font-size: 21px;
+  margin: 0;
+  letter-spacing: -0.025em;
+  margin-inline-end: auto;
+}
+
+.psub {
+  font-size: 14px;
+  color: var(--ink-3);
+  margin: 0 0 20px;
+}
+
+.modes {
+  display: inline-flex;
+  background: #f2efec;
+  border-radius: 14px;
+  padding: 4px;
+  gap: 3px;
+  margin-block-end: 22px;
+}
+.modes a {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 17px;
+  border-radius: 11px;
+  color: var(--ink-3);
+  transition: 0.16s;
+  text-decoration: none;
+  display: inline-block;
+}
+.modes a.on {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: var(--sh-1);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th {
+  text-align: start;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  font-weight: 600;
+  padding: 0 10px 10px;
+  border-block-end: 1px solid var(--line);
+}
+.table td {
+  padding: 11px 10px;
+  border-block-end: 1px solid var(--line);
+  font-size: 14.5px;
+  vertical-align: middle;
+}
+.table tr:last-child td {
+  border-block-end: 0;
+}
+
+.it {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.it img {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  object-fit: cover;
+  background: #eee9e4;
+  flex: none;
+}
+.it b {
+  font-weight: 600;
+}
+.it small {
+  display: block;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+/* colors reused from the order status pills already established in
+   globals.css (.status-pill.status-*) for a consistent admin palette */
+.pill {
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: inline-block;
+}
+.pill.ok {
+  background: #e4f5e9;
+  color: #1f7a3d;
+}
+.pill.hold {
+  background: #fdf3d9;
+  color: #8a6a1a;
+}
+.pill.sold {
+  background: #f2efec;
+  color: var(--ink-3);
+}
+.pill.draft {
+  background: #fff;
+  color: var(--ink-3);
+  border: 1px dashed var(--line);
+}
+
+.rowbtn {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--ink-2);
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-block;
+}
+.rowbtn:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.empty {
+  color: var(--ink-3);
+  font-size: 14.5px;
+  padding-block: 18px;
+  text-align: center;
+}
+
+/* ── item edit / delete ─────────────────────────────────── */
+.editHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-block-end: 18px;
+}
+.editHead h2 {
+  font-size: 21px;
+  margin: 0;
+  letter-spacing: -0.025em;
+  margin-inline-end: auto;
+}
+.back {
+  font-size: 13.5px;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.back:hover {
+  color: var(--ink);
+}
+
+.dangerZone {
+  margin-block-start: 22px;
+  padding-block-start: 18px;
+  border-block-start: 1px solid var(--line);
+}
+.dangerConfirm {
+  background: var(--accent-soft);
+  border-radius: 14px;
+  padding: 13px 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.dangerConfirm p {
+  margin: 0;
+  font-size: 14px;
+  color: #9b3a20;
+  font-weight: 600;
+  margin-inline-end: auto;
+}
+.deleteError {
+  background: var(--accent-soft);
+  color: #9b3a20;
+  border-radius: 13px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
