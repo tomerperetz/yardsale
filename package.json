@@ -16,7 +16,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "admin:password": "tsx scripts/hash-password.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -25,7 +26,8 @@
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@prisma/client": "^6.0.0"
+    "@prisma/client": "^6.0.0",
+    "@node-rs/argon2": "^2.0.0"
   },
   "devDependencies": {
     "@testing-library/react": "^16.0.0",
