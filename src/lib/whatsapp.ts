@@ -11,6 +11,8 @@ export type OrderForMessage = {
   pickupDate: Date
   pickupSlot: PickupSlot
   status: OrderStatus
+  /** Optional: only PENDING_PAYMENT orders carry one, and only that message reads it. */
+  holdExpiresAt?: Date | null
 }
 
 /** Only the settings fields a WhatsApp message ever needs to read. */
@@ -21,6 +23,8 @@ export type SettingsForMessage = {
   slotMorning: string
   slotAfternoon: string
   slotEvening: string
+  /** Optional: only the PENDING_PAYMENT chase message reads it. */
+  bitPhone?: string
 }
 
 const pickupDateFormatter = new Intl.DateTimeFormat('he-IL', {
@@ -53,17 +57,37 @@ function pickupDetails(order: OrderForMessage, settings: SettingsForMessage): st
   return parts.join(', ')
 }
 
+/**
+ * Whole minutes left on the hold, rounded up so "1 minute left" never reads as "0 minutes left".
+ * Returns null when there is nothing true left to say — no hold, or it has already lapsed —
+ * so the message can omit the time claim instead of guessing.
+ */
+function remainingHoldMinutes(order: OrderForMessage, now: Date): number | null {
+  if (!order.holdExpiresAt) return null
+  const msLeft = order.holdExpiresAt.getTime() - now.getTime()
+  return msLeft > 0 ? Math.ceil(msLeft / 60_000) : null
+}
+
 /** Builds the Hebrew WhatsApp message the seller sends for the order's current state. */
-export function messageForOrder(order: OrderForMessage, settings: SettingsForMessage): string {
+export function messageForOrder(order: OrderForMessage, settings: SettingsForMessage, now: Date = new Date()): string {
   const shop = settings.shopName ? ` ב${settings.shopName}` : ''
 
   switch (order.status) {
-    case OrderStatus.PENDING_PAYMENT:
-      return (
-        `היי ${order.buyerName}, ההזמנה שלך ${order.code}${shop} נשמרה וממתינה לתשלום בביט ` +
-        `על סך ${formatAgorot(order.totalAgorot)}. יש 15 דקות להעביר את התשלום וללחוץ על "שילמתי בביט" ` +
-        `באתר, אחרת ההזמנה תתבטל אוטומטית והפריטים יחזרו למלאי.`
-      )
+    case OrderStatus.PENDING_PAYMENT: {
+      // Each clause is a complete standalone sentence, so dropping any one of them
+      // (no time left to report, no BIT number set yet) never leaves a dangling
+      // connector or a stray comma behind — the join is always grammatical.
+      const sentences = [`היי ${order.buyerName}, ההזמנה שלך ${order.code}${shop} נשמרה וממתינה לתשלום בביט על סך ${formatAgorot(order.totalAgorot)}.`]
+
+      const minutes = remainingHoldMinutes(order, now)
+      if (minutes !== null) sentences.push(`נשארו לך ${minutes} דקות להעברת התשלום.`)
+
+      if (settings.bitPhone) sentences.push(`אפשר להעביר לביט למספר ${settings.bitPhone}.`)
+
+      sentences.push('לאחר התשלום יש ללחוץ על "שילמתי בביט" באתר, אחרת ההזמנה תתבטל אוטומטית והפריטים יחזרו למלאי.')
+
+      return sentences.join(' ')
+    }
 
     case OrderStatus.CLAIMED_PAID:
       return (

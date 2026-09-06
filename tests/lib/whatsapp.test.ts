@@ -48,4 +48,43 @@ describe('messageForOrder', () => {
       expect(msg.trim().length).toBeGreaterThan(10)
     }
   })
+
+  it('never leaves an undefined, a stray comma run, or a dangling connector when every seller-facing setting is empty', () => {
+    // A Settings row exactly as seeded on day one: nothing filled in yet.
+    const emptySettings = {
+      shopName: '',
+      tagline: '',
+      bitPhone: '',
+      addressLine: '',
+      city: '',
+      slotMorning: '',
+      slotAfternoon: '',
+      slotEvening: '',
+    }
+
+    for (const status of Object.values(OrderStatus)) {
+      const msg = messageForOrder({ ...order, status }, emptySettings)
+      expect(msg).not.toContain('undefined')
+      expect(msg.trim().length).toBeGreaterThan(10)
+      // Dropping an omitted clause (empty shop name, address, slot, or BIT number) must
+      // never leave its connector word or its list separator behind.
+      expect(msg).not.toMatch(/,\s*,/) // a doubled separator where a joined part went empty
+      expect(msg).not.toMatch(/,\s*[.!?]/) // a separator immediately followed by end punctuation
+      expect(msg.trim()).not.toMatch(/,$/) // a trailing separator with nothing after it
+      expect(msg).not.toMatch(/(^|\s)ב([.,!?]|$)/) // a lone "ב" connector with nothing to attach to
+    }
+  })
+
+  it('states the real remaining time when the hold is still running, not a fixed number', () => {
+    const now = new Date('2026-09-10T10:00:00Z')
+    const soon = { ...order, status: OrderStatus.PENDING_PAYMENT, holdExpiresAt: new Date('2026-09-10T10:03:00Z') }
+    const msg = messageForOrder(soon, settings, now)
+    expect(msg).toContain('3')
+    expect(msg).not.toContain('15')
+  })
+
+  it('makes no minute claim when the order carries no hold to report', () => {
+    const msg = messageForOrder({ ...order, status: OrderStatus.PENDING_PAYMENT }, settings)
+    expect(msg).not.toContain('דקות')
+  })
 })
