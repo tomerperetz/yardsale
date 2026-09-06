@@ -38,25 +38,36 @@ export async function storePhoto(buf: Buffer, itemId: string, photoId: string) {
   const dir = itemDir(itemId)
   await mkdir(dir, { recursive: true })
 
-  // rotate() applies the EXIF orientation flag, and the re-encode drops all metadata,
-  // which is also how GPS coordinates from a phone photo are removed.
-  const base = sharp(buf).rotate()
-  const meta = await base.metadata()
-  const width = meta.width ?? 0
-  const height = meta.height ?? 0
+  const written: string[] = []
+  try {
+    // rotate() applies the EXIF orientation flag, and the re-encode drops all metadata,
+    // which is also how GPS coordinates from a phone photo are removed.
+    const base = sharp(buf).rotate()
+    const meta = await base.metadata()
+    const width = meta.width ?? 0
+    const height = meta.height ?? 0
 
-  for (const w of WIDTHS) {
-    const out = await sharp(buf)
-      .rotate()
-      .resize({ width: Math.min(w, width || w), withoutEnlargement: true })
-      .webp({ quality: 82 })
-      .toBuffer()
-    await writeFile(path.join(dir, photoFilename(photoId, w)), out)
+    for (const w of WIDTHS) {
+      const out = await sharp(buf)
+        .rotate()
+        .resize({ width: Math.min(w, width || w), withoutEnlargement: true })
+        .webp({ quality: 82 })
+        .toBuffer()
+      const filePath = path.join(dir, photoFilename(photoId, w))
+      await writeFile(filePath, out)
+      written.push(filePath)
+    }
+
+    const blur = await sharp(buf).rotate().resize({ width: 16 }).webp({ quality: 30 }).toBuffer()
+
+    return { width, height, lqip: `data:image/webp;base64,${blur.toString('base64')}` }
+  } catch (err) {
+    // A failure partway through must never leave a partial width set on disk
+    // with no Photo row pointing at it — remove whatever this call already
+    // wrote before propagating the error.
+    await Promise.all(written.map((f) => rm(f, { force: true })))
+    throw err
   }
-
-  const blur = await sharp(buf).rotate().resize({ width: 16 }).webp({ quality: 30 }).toBuffer()
-
-  return { width, height, lqip: `data:image/webp;base64,${blur.toString('base64')}` }
 }
 
 export async function deleteItemPhotos(itemId: string): Promise<void> {

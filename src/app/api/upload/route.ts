@@ -7,6 +7,10 @@ import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, sniffImageType, storePhoto } from '@/li
 // Authenticated via src/middleware.ts (matcher includes /api/upload) —
 // an unauthenticated request never reaches this handler.
 
+// Deliberately generous: one itemId, a 10-photo-per-item cap, and phone
+// photos run 2-5 MB, so 64 MB comfortably covers a full batch with headroom.
+const MAX_REQUEST_BYTES = 64 * 1024 * 1024
+
 const itemIdSchema = z.string().min(1)
 
 /**
@@ -29,6 +33,15 @@ function photoId(): string {
 }
 
 export async function POST(req: NextRequest) {
+  // request.formData() buffers the entire multipart body before any per-file
+  // check can run, and Route Handlers impose no default body limit — reject
+  // an oversized request up front. Content-Length can be absent on a
+  // chunked request; when it is, the per-file caps below remain the backstop.
+  const contentLength = req.headers.get('content-length')
+  if (contentLength && Number(contentLength) > MAX_REQUEST_BYTES) {
+    return NextResponse.json({ error: 'הבקשה גדולה מדי. נסו להעלות פחות תמונות בבת אחת.' }, { status: 413 })
+  }
+
   const form = await req.formData()
 
   const itemIdRaw = form.get('itemId')
@@ -78,31 +91,45 @@ export async function POST(req: NextRequest) {
       errors.push(`${file.name}: הקובץ גדול מדי`)
       continue
     }
-    if (!sniffImageType(buf)) {
+    const sniffed = sniffImageType(buf)
+    if (!sniffed) {
       errors.push(`${file.name}: קובץ לא מזוהה כתמונה`)
       continue
     }
 
     const id = photoId()
-    const { width, height, lqip } = await storePhoto(buf, itemId, id)
 
-    const takenAtRaw = takenAtValues[i]
-    const takenAt = takenAtRaw ? takenAtSchema.parse(takenAtRaw) : undefined
+    // A file that sniffs as an image but fails to decode (a corrupt upload,
+    // or a HEIC variant this build's libvips can't read) must not abort the
+    // rest of the batch — storePhoto guarantees it leaves nothing on disk
+    // when it throws, so it's safe to just record the failure and move on.
+    try {
+      const { width, height, lqip } = await storePhoto(buf, itemId, id)
 
-    await db.photo.create({
-      data: {
-        id,
-        itemId,
-        width,
-        height,
-        lqip,
-        position: count,
-        ...(takenAt ? { takenAt: new Date(takenAt) } : {}),
-      },
-    })
+      const takenAtRaw = takenAtValues[i]
+      const takenAt = takenAtRaw ? takenAtSchema.parse(takenAtRaw) : undefined
 
-    photos.push({ id, lqip, width, height })
-    count += 1
+      await db.photo.create({
+        data: {
+          id,
+          itemId,
+          width,
+          height,
+          lqip,
+          position: count,
+          ...(takenAt ? { takenAt: new Date(takenAt) } : {}),
+        },
+      })
+
+      photos.push({ id, lqip, width, height })
+      count += 1
+    } catch {
+      errors.push(
+        sniffed === 'heic'
+          ? `${file.name}: לא הצלחנו לקרוא קובץ HEIC. באייפון: הגדרות ← מצלמה ← פורמטים ← ״הכי תואם״, ואז לצלם מחדש, או להמיר את הקובץ ל‑JPEG.`
+          : `${file.name}: לא הצלחנו לקרוא את הקובץ.`,
+      )
+    }
   }
 
   return NextResponse.json({ photos, errors })

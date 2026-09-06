@@ -67,4 +67,15 @@ describe('storePhoto', () => {
     const meta = await sharp(path.join(dir, 'item3', photoFilename('photo3', 800))).metadata()
     expect(meta.exif).toBeUndefined()
   })
+
+  it('cleans up after itself when the image cannot be decoded', async () => {
+    // Valid PNG magic bytes followed by garbage: sniffs as 'png' but sharp
+    // cannot decode it, so this fails deterministically.
+    const truncated = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from('not a real png')])
+
+    await expect(storePhoto(truncated, 'item4', 'photo4')).rejects.toThrow()
+
+    const files = await readdir(path.join(dir, 'item4'))
+    expect(files).toEqual([])
+  })
 })
