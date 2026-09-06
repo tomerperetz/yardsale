@@ -40,20 +40,23 @@ export async function saveSettingsAction(input: SettingsInput): Promise<Settings
     return { ok: false, error: 'משך ההמתנה לתשלום צריך להיות מספר שלם חיובי של דקות.' }
   }
 
-  await db.settings.update({
-    where: { id: 1 },
-    data: {
-      shopName: input.shopName.trim(),
-      tagline: input.tagline.trim(),
-      bitPhone,
-      addressLine: input.addressLine.trim(),
-      city: input.city.trim(),
-      slotMorning: input.slotMorning.trim(),
-      slotAfternoon: input.slotAfternoon.trim(),
-      slotEvening: input.slotEvening.trim(),
-      holdMinutes,
-    },
-  })
+  const fields = {
+    shopName: input.shopName.trim(),
+    tagline: input.tagline.trim(),
+    bitPhone,
+    addressLine: input.addressLine.trim(),
+    city: input.city.trim(),
+    slotMorning: input.slotMorning.trim(),
+    slotAfternoon: input.slotAfternoon.trim(),
+    slotEvening: input.slotEvening.trim(),
+    holdMinutes,
+  }
+
+  // upsert, not update: `getSettings()` degrades a missing row into an
+  // all-empty first-run shop rather than 500ing every page, so this screen
+  // stays reachable with no row at all — and saving from it has to be what
+  // creates the row. A read never creates it (see src/lib/settings.ts).
+  await db.settings.upsert({ where: { id: 1 }, update: fields, create: { id: 1, ...fields } })
 
   revalidatePath('/admin/settings')
   revalidatePath('/admin/items')
