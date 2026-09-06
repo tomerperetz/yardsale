@@ -12,10 +12,11 @@ export type CheckoutState = { error?: string; unavailableItemIds?: string[] }
 export async function checkout(_prev: CheckoutState, formData: FormData): Promise<CheckoutState> {
   // The only unauthenticated endpoint that changes item availability. Each
   // call can hold real goods off the shop for a full hold window, so it is
-  // rate limited exactly like /admin/login. The key is namespaced so buyers
-  // and the seller's login do not share a per-IP bucket.
+  // rate limited like /admin/login — but in its own namespace, with its own
+  // far larger global ceiling: a launch burst of buyers must never spend the
+  // budget the seller needs to sign in (see src/lib/rate-limit.ts).
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local'
-  if (!hit(`checkout:${ip}`).allowed) return { error: 'יותר מדי ניסיונות. נסו שוב בעוד רבע שעה.' }
+  if (!hit(ip, Date.now(), 'checkout').allowed) return { error: 'יותר מדי ניסיונות. נסו שוב בעוד רבע שעה.' }
 
   const itemIds = String(formData.get('itemIds') ?? '').split(',').filter(Boolean)
   const buyerName = String(formData.get('buyerName') ?? '').trim()

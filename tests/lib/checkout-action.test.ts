@@ -53,6 +53,8 @@ describe('checkout rate limiting', () => {
 
     for (let i = 0; i < 11; i++) await checkout({}, form({ ...valid, buyerName: '' }))
 
-    expect(hit('203.0.113.9').allowed).toBe(true)
+    // Same IP, and the checkout allowance is spent — the seller signing in
+    // from behind the same NAT still gets their full allowance.
+    expect(hit('203.0.113.9', Date.now(), 'login').allowed).toBe(true)
   })
 })
