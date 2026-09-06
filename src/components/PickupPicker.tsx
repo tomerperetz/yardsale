@@ -5,6 +5,8 @@ import { PickupWindow } from '@/components/PickupWindow'
 
 export type PickupSlotValue = 'MORNING' | 'AFTERNOON' | 'EVENING'
 export type PickupPickerItem = { id: string; name: string; from: Date; to: Date }
+/** The seller's free-text hour range per slot, e.g. `{ AFTERNOON: '12:00–17:00' }` — from `Settings`, may be empty. */
+export type SlotHours = Record<PickupSlotValue, string>
 
 const WEEKDAY_LETTERS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
 
@@ -37,6 +39,7 @@ export function PickupPicker({
   onSelectDate,
   selectedSlot,
   onSelectSlot,
+  slotHours,
 }: {
   items: PickupPickerItem[]
   intersection: { from: Date; to: Date; startItemId: string; endItemId: string }
@@ -44,6 +47,7 @@ export function PickupPicker({
   onSelectDate: (iso: string) => void
   selectedSlot: PickupSlotValue | null
   onSelectSlot: (slot: PickupSlotValue) => void
+  slotHours: SlotHours
 }) {
   const displayFrom = new Date(Math.min(...items.map((item) => item.from.getTime())))
   const displayTo = new Date(Math.max(...items.map((item) => item.to.getTime())))
@@ -95,16 +99,24 @@ export function PickupPicker({
       </div>
 
       <div className="slots">
-        {SLOTS.map((slot) => (
-          <button
-            key={slot.value}
-            type="button"
-            className={selectedSlot === slot.value ? 'slot on' : 'slot'}
-            onClick={() => onSelectSlot(slot.value)}
-          >
-            {slot.label}
-          </button>
-        ))}
+        {SLOTS.map((slot) => {
+          const hours = slotHours[slot.value].trim()
+          return (
+            <button
+              key={slot.value}
+              type="button"
+              className={selectedSlot === slot.value ? 'slot on' : 'slot'}
+              onClick={() => onSelectSlot(slot.value)}
+            >
+              <b>{slot.label}</b>
+              {/* The seller's configured hours, when set — shown at the moment the
+                  buyer chooses rather than only afterwards on /o/[token]. Substring
+                  matching means the bare label (`אחה״צ`) still selects this button;
+                  see accessible-names.md for why the day chips can't share that luxury. */}
+              {hours !== '' && <small>{hours}</small>}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

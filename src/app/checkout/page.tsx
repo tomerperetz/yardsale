@@ -104,6 +104,7 @@ export default async function CheckoutPage({
                   itemIds={items.map((item) => item.id)}
                   pickupItems={items.map((item) => ({ id: item.id, name: item.name, from: item.pickupFrom, to: item.pickupTo }))}
                   intersection={intersection}
+                  slotHours={{ MORNING: settings.slotMorning, AFTERNOON: settings.slotAfternoon, EVENING: settings.slotEvening }}
                 />
               )}
             </>

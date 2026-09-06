@@ -306,6 +306,10 @@ header {
   font-family: inherit;
 }
 .slot.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+/* the seller's configured hour range, shown beneath the slot label when set */
+.slot b { display: block; font-weight: 600; }
+.slot small { display: block; font-size: 11px; font-weight: 500; color: var(--ink-3); margin-block-start: 2px; }
+.slot.on small { color: rgba(255, 255, 255, 0.6); }
 
 .checkout-error {
   background: var(--accent-soft); color: #9B3A20; border-radius: 13px; padding: 10px 13px;

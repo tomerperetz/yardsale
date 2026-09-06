@@ -30,6 +30,24 @@ const SLOT_LABEL: Record<PickupSlot, string> = {
   EVENING: 'ערב',
 }
 
+/** The seller's configured hour range for a slot — same fields `whatsapp.ts` reads. May be empty. */
+function slotHoursFor(slot: PickupSlot, settings: { slotMorning: string; slotAfternoon: string; slotEvening: string }): string {
+  switch (slot) {
+    case 'MORNING':
+      return settings.slotMorning
+    case 'AFTERNOON':
+      return settings.slotAfternoon
+    case 'EVENING':
+      return settings.slotEvening
+  }
+}
+
+/** "אחה״צ" alone, or "אחה״צ · 12:00–17:00" once the seller has configured that slot's hours. */
+function slotDisplay(slot: PickupSlot, settings: { slotMorning: string; slotAfternoon: string; slotEvening: string }): string {
+  const hours = slotHoursFor(slot, settings).trim()
+  return hours === '' ? SLOT_LABEL[slot] : `${SLOT_LABEL[slot]} · ${hours}`
+}
+
 /**
  * The order's own page: what was bought, the total, when and roughly
  * where to pick it up, and the order's current status in plain Hebrew.
@@ -87,7 +105,7 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
             <div className="fact">
               <i>◷</i>
               <span>
-                איסוף ב<b><PickupWindow from={order.pickupDate} to={order.pickupDate} /></b> · {SLOT_LABEL[order.pickupSlot]}
+                איסוף ב<b><PickupWindow from={order.pickupDate} to={order.pickupDate} /></b> · {slotDisplay(order.pickupSlot, settings)}
               </span>
             </div>
             {address !== '' && (

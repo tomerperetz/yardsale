@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { checkout, type CheckoutState } from '@/app/checkout/actions'
 import { useCart } from '@/components/CartProvider'
-import { PickupPicker, type PickupPickerItem, type PickupSlotValue } from '@/components/PickupPicker'
+import { PickupPicker, type PickupPickerItem, type PickupSlotValue, type SlotHours } from '@/components/PickupPicker'
 
 const initialState: CheckoutState = {}
 
@@ -23,10 +23,12 @@ export function CheckoutForm({
   itemIds,
   pickupItems,
   intersection,
+  slotHours,
 }: {
   itemIds: string[]
   pickupItems: PickupPickerItem[]
   intersection: { from: Date; to: Date; startItemId: string; endItemId: string }
+  slotHours: SlotHours
 }) {
   const router = useRouter()
   const cart = useCart()
@@ -105,6 +107,7 @@ export function CheckoutForm({
         onSelectDate={setSelectedDate}
         selectedSlot={selectedSlot}
         onSelectSlot={setSelectedSlot}
+        slotHours={slotHours}
       />
 
       <div className="foot-btn">
