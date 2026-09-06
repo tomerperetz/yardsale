@@ -10,8 +10,12 @@ import { mergeCategories, renameCategory, type suggestMerges } from '@/lib/admin
  * and deletes it. The UI (`MergeBanner`) requires an explicit inline
  * confirmation step before ever calling this — never a bare click.
  */
-export async function mergeCategoriesAction(fromId: string, intoId: string): Promise<{ ok: true }> {
-  await mergeCategories(fromId, intoId)
+export async function mergeCategoriesAction(
+  fromId: string,
+  intoId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await mergeCategories(fromId, intoId)
+  if (!result.ok) return result
   revalidatePath('/admin/categories')
   revalidatePath('/admin/items')
   return { ok: true }

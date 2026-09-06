@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import { readTakenAt } from '@/lib/exif-client'
 import { convertHeicIfNeeded } from '@/lib/heic-client'
 import { groupByCaptureTime, type PhotoStamp } from '@/lib/exif'
-import { createItemAction } from '@/app/admin/items/actions'
+import { createItemAction, updateItemAction } from '@/app/admin/items/actions'
 import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, MAX_REQUEST_BYTES } from '@/lib/photo-url'
 import styles from './admin.module.css'
 
 type Group = { id: string; keys: string[] }
 type UploadResult = { successCount: number; errors: string[] }
+type StepResult = UploadResult & { published: boolean }
 
 /**
  * Bulk photo intake: drop a whole camera roll, get a PROPOSED grouping from
@@ -48,7 +49,7 @@ export function BulkQueue({
   const [category, setCategory] = useState(initialCategory)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [lastResult, setLastResult] = useState<UploadResult | null>(null)
+  const [lastResult, setLastResult] = useState<StepResult | null>(null)
   const [createdCount, setCreatedCount] = useState(0)
 
   useEffect(() => {
@@ -152,7 +153,11 @@ export function BulkQueue({
     setPending(true)
     setError(null)
 
-    const created = await createItemAction({
+    // Created as a DRAFT, published only once its photos are on disk. Going
+    // live first put a photoless item in the shop, and left it that way for
+    // good if the upload then failed — a listing nobody can judge, for an
+    // object nobody can see.
+    const fields = {
       name,
       description: '',
       price,
@@ -160,8 +165,8 @@ export function BulkQueue({
       pickupFrom: initialPickupFrom,
       pickupTo: initialPickupTo,
       photoIds: [],
-      publish: true,
-    })
+    }
+    const created = await createItemAction({ ...fields, publish: false })
     if (!created.ok) {
       setPending(false)
       setError(created.error)
@@ -218,7 +223,17 @@ export function BulkQueue({
       }
     }
 
-    setLastResult(uploadResult)
+    // Publish only now, and only if the item actually has a photo. One that
+    // does not stays a DRAFT: it is waiting on the seller in /admin/items,
+    // not sitting in the shop looking broken.
+    let published = false
+    if (uploadResult.successCount > 0) {
+      const result = await updateItemAction(created.id, { ...fields, publish: true })
+      published = result.ok
+      if (!result.ok) uploadResult = { ...uploadResult, errors: [...uploadResult.errors, result.error] }
+    }
+
+    setLastResult({ ...uploadResult, published })
     setPending(false)
     setPhase('result')
   }
@@ -410,9 +425,9 @@ export function BulkQueue({
           {lastResult && (
             <div className={styles.result}>
               <p>
-                {lastResult.successCount > 0
-                  ? `הועלו ${lastResult.successCount} תמונות בהצלחה.`
-                  : 'לא הועלתה אף תמונה עבור הפריט הזה.'}
+                {lastResult.published
+                  ? `הועלו ${lastResult.successCount} תמונות. הפריט פורסם.`
+                  : 'לא הועלתה אף תמונה, אז הפריט נשמר כטיוטה — אפשר להוסיף לו תמונות ולפרסם ממסך הפריטים.'}
               </p>
               {lastResult.errors.length > 0 && (
                 <div className={styles.resultErrors}>

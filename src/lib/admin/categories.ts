@@ -45,11 +45,17 @@ export function suggestMerges(
   return out
 }
 
-export async function mergeCategories(fromId: string, intoId: string): Promise<void> {
+export async function mergeCategories(fromId: string, intoId: string): Promise<{ ok: boolean; error?: string }> {
+  // Merging a category into itself reassigns its items to it — a no-op — and
+  // then deletes a category its own items still point at: a foreign-key
+  // violation and an unhandled 500 for the seller. Refuse it in words.
+  if (fromId === intoId) return { ok: false, error: 'אי אפשר למזג קטגוריה לתוך עצמה.' }
+
   await db.$transaction(async (tx) => {
     await tx.item.updateMany({ where: { categoryId: fromId }, data: { categoryId: intoId } })
     await tx.category.delete({ where: { id: fromId } })
   })
+  return { ok: true }
 }
 
 export async function renameCategory(id: string, rawName: string): Promise<{ ok: boolean; error?: string }> {

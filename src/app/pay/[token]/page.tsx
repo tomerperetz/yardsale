@@ -6,6 +6,7 @@ import { formatAgorot } from '@/lib/money'
 import { holdIsRunning } from '@/lib/orders/state'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { SiteHeader } from '@/components/SiteHeader'
+import { ClearOrderedFromCart } from '@/components/ClearOrderedFromCart'
 import { HoldCountdown } from '@/components/HoldCountdown'
 import { CopyField } from '@/components/CopyField'
 import { PayForm } from './PayForm'
@@ -32,7 +33,14 @@ export default async function PayPage({ params }: { params: Promise<{ token: str
   const [order, settings] = await Promise.all([
     db.order.findUnique({
       where: { token },
-      select: { token: true, code: true, status: true, totalAgorot: true, holdExpiresAt: true },
+      select: {
+        token: true,
+        code: true,
+        status: true,
+        totalAgorot: true,
+        holdExpiresAt: true,
+        items: { select: { itemId: true } },
+      },
     }),
     getSettings(),
   ])
@@ -41,6 +49,9 @@ export default async function PayPage({ params }: { params: Promise<{ token: str
   return (
     <>
       <SiteHeader shopName={settings.shopName} tagline={settings.tagline} />
+      {/* The order exists, so these items are no longer things to shop for —
+          leaving them in the cart shows the buyer their own items as "נתפס". */}
+      <ClearOrderedFromCart itemIds={order.items.map((line) => line.itemId)} />
       <div className="wrap pay-page">
         <div className="pay-card">
           <h2>תשלום בביט</h2>

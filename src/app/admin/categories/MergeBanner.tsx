@@ -25,11 +25,17 @@ export function MergeBanner({ aId, bId, fromId, fromName, intoId, intoName }: Pr
   const router = useRouter()
   const [confirming, setConfirming] = useState(false)
   const [pending, setPending] = useState<'merge' | 'dismiss' | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   async function doMerge() {
     setPending('merge')
-    await mergeCategoriesAction(fromId, intoId)
+    setError(null)
+    const result = await mergeCategoriesAction(fromId, intoId)
     setPending(null)
+    if (!result.ok) {
+      setError(result.error ?? 'האיחוד נכשל.')
+      return
+    }
     router.refresh()
   }
 
@@ -42,7 +48,22 @@ export function MergeBanner({ aId, bId, fromId, fromName, intoId, intoName }: Pr
 
   return (
     <div className={styles.merge}>
-      {confirming ? (
+      {error !== null ? (
+        <>
+          <span>{error}</span>
+          <span className={styles.sp} />
+          <button
+            type="button"
+            className={styles.rowbtn}
+            onClick={() => {
+              setError(null)
+              setConfirming(false)
+            }}
+          >
+            סגירה
+          </button>
+        </>
+      ) : confirming ? (
         <>
           <span>
             לאחד את <b>״{fromName}״</b> לתוך <b>״{intoName}״</b>? כל הפריטים יעברו ל&quot;{intoName}&quot; והקטגוריה

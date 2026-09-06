@@ -6,6 +6,13 @@ const STORAGE_KEY = 'ys_cart'
 
 type CartContextValue = {
   ids: string[]
+  /**
+   * False until the stored cart has been read. Anything that *removes* ids on
+   * mount must wait for this: child effects run before the provider's own, so
+   * removing from the still-empty initial state would write an empty cart back
+   * to storage and lose everything the buyer had.
+   */
+  hydrated: boolean
   add(id: string): void
   remove(id: string): void
   clear(): void
@@ -41,12 +48,14 @@ function writeStoredIds(ids: string[]): void {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [ids, setIds] = useState<string[]>([])
+  const [hydrated, setHydrated] = useState(false)
 
   // Read localStorage after mount, not in useState's initializer, so the
   // server-rendered and first client paint both show an empty cart — the
   // stored ids only ever differ on the client, and only after this effect.
   useEffect(() => {
     setIds(readStoredIds())
+    setHydrated(true)
   }, [])
 
   const add = (id: string) => {
@@ -60,6 +69,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const remove = (id: string) => {
     setIds((prev) => {
+      // Returning `prev` unchanged for an id that isn't there keeps this a
+      // true no-op — no needless storage write, and no re-render for a caller
+      // that removes the same ids on every render (see ClearOrderedFromCart).
+      if (!prev.includes(id)) return prev
       const next = prev.filter((existing) => existing !== id)
       writeStoredIds(next)
       return next
@@ -71,7 +84,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     writeStoredIds([])
   }
 
-  return <CartContext.Provider value={{ ids, add, remove, clear }}>{children}</CartContext.Provider>
+  return <CartContext.Provider value={{ ids, hydrated, add, remove, clear }}>{children}</CartContext.Provider>
 }
 
 export function useCart(): CartContextValue {

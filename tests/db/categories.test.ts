@@ -18,6 +18,21 @@ describe('mergeCategories', () => {
     expect(await db.item.count({ where: { categoryId: into.id } })).toBe(2)
     expect(await db.category.findUnique({ where: { id: from.id } })).toBeNull()
   })
+
+  // Without the guard this deletes a category its own items still point at:
+  // a foreign-key violation surfacing as an unhandled 500.
+  it('refuses to merge a category into itself, in words rather than a crash', async () => {
+    const c = await makeCategory('ריהוט')
+    await makeItem({ categoryId: c.id })
+
+    expect(await mergeCategories(c.id, c.id)).toEqual({
+      ok: false,
+      error: 'אי אפשר למזג קטגוריה לתוך עצמה.',
+    })
+
+    expect(await db.category.findUnique({ where: { id: c.id } })).not.toBeNull()
+    expect(await db.item.count({ where: { categoryId: c.id } })).toBe(1)
+  })
 })
 
 describe('renameCategory', () => {
