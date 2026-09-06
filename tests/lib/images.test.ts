@@ -3,7 +3,7 @@ import { mkdtemp, rm, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
-import { sniffImageType, storePhoto, photoFilename, WIDTHS } from '@/lib/images'
+import { sniffImageType, storePhoto, deletePhotoFiles, photoFilename, WIDTHS } from '@/lib/images'
 
 let dir: string
 
@@ -77,5 +77,21 @@ describe('storePhoto', () => {
 
     const files = await readdir(path.join(dir, 'item4'))
     expect(files).toEqual([])
+  })
+})
+
+describe('deletePhotoFiles', () => {
+  it('removes every width variant of a stored photo', async () => {
+    await storePhoto(await jpeg(), 'item5', 'photo5')
+    const before = await readdir(path.join(dir, 'item5'))
+    expect(before.sort()).toEqual(WIDTHS.map((w) => photoFilename('photo5', w)).sort())
+
+    await deletePhotoFiles('item5', 'photo5')
+    const after = await readdir(path.join(dir, 'item5'))
+    expect(after).toEqual([])
+  })
+
+  it('resolves rather than throwing when there is nothing to remove', async () => {
+    await expect(deletePhotoFiles('item5', 'photo5')).resolves.toBeUndefined()
   })
 })

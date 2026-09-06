@@ -64,10 +64,24 @@ export async function storePhoto(buf: Buffer, itemId: string, photoId: string) {
   } catch (err) {
     // A failure partway through must never leave a partial width set on disk
     // with no Photo row pointing at it — remove whatever this call already
-    // wrote before propagating the error.
-    await Promise.all(written.map((f) => rm(f, { force: true })))
+    // wrote before propagating the error. A cleanup failure must never mask
+    // the original error, so each removal swallows its own errors.
+    await Promise.all(written.map((f) => rm(f, { force: true }).catch(() => {})))
     throw err
   }
+}
+
+/**
+ * Removes every width variant of one photo. Used on error paths — e.g. when
+ * storePhoto succeeded but the Photo row was never created — so it must
+ * never throw itself; a cleanup failure here would replace the caller's
+ * real error with an unrelated one.
+ */
+export async function deletePhotoFiles(itemId: string, photoId: string): Promise<void> {
+  const dir = itemDir(itemId)
+  await Promise.all(
+    WIDTHS.map((w) => rm(path.join(dir, photoFilename(photoId, w)), { force: true }).catch(() => {})),
+  )
 }
 
 export async function deleteItemPhotos(itemId: string): Promise<void> {

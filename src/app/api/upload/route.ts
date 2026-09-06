@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
-import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, sniffImageType, storePhoto } from '@/lib/images'
+import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, deletePhotoFiles, sniffImageType, storePhoto } from '@/lib/images'
 
 // Authenticated via src/middleware.ts (matcher includes /api/upload) —
 // an unauthenticated request never reaches this handler.
@@ -103,8 +103,12 @@ export async function POST(req: NextRequest) {
     // or a HEIC variant this build's libvips can't read) must not abort the
     // rest of the batch — storePhoto guarantees it leaves nothing on disk
     // when it throws, so it's safe to just record the failure and move on.
+    // `stored` distinguishes a decode failure (nothing written) from a
+    // failure after storePhoto succeeded (files written, but the Photo row
+    // was never created) — the latter must clean up its own files too.
+    let stored: Awaited<ReturnType<typeof storePhoto>> | null = null
     try {
-      const { width, height, lqip } = await storePhoto(buf, itemId, id)
+      stored = await storePhoto(buf, itemId, id)
 
       const takenAtRaw = takenAtValues[i]
       const takenAt = takenAtRaw ? takenAtSchema.parse(takenAtRaw) : undefined
@@ -113,21 +117,24 @@ export async function POST(req: NextRequest) {
         data: {
           id,
           itemId,
-          width,
-          height,
-          lqip,
+          width: stored.width,
+          height: stored.height,
+          lqip: stored.lqip,
           position: count,
           ...(takenAt ? { takenAt: new Date(takenAt) } : {}),
         },
       })
 
-      photos.push({ id, lqip, width, height })
+      photos.push({ id, lqip: stored.lqip, width: stored.width, height: stored.height })
       count += 1
     } catch {
+      if (stored) await deletePhotoFiles(itemId, id)
       errors.push(
-        sniffed === 'heic'
-          ? `${file.name}: לא הצלחנו לקרוא קובץ HEIC. באייפון: הגדרות ← מצלמה ← פורמטים ← ״הכי תואם״, ואז לצלם מחדש, או להמיר את הקובץ ל‑JPEG.`
-          : `${file.name}: לא הצלחנו לקרוא את הקובץ.`,
+        stored
+          ? `${file.name}: שגיאה בשמירת התמונה. נסו שוב.`
+          : sniffed === 'heic'
+            ? `${file.name}: לא הצלחנו לקרוא קובץ HEIC. באייפון: הגדרות ← מצלמה ← פורמטים ← ״הכי תואם״, ואז לצלם מחדש, או להמיר את הקובץ ל‑JPEG.`
+            : `${file.name}: לא הצלחנו לקרוא את הקובץ.`,
       )
     }
   }
