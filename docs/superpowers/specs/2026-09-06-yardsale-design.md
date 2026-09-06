@@ -1,4 +1,4 @@
-# החצר — single-seller yard sale shop
+# Single-seller yard sale shop
 
 **Date:** 2026-09-06
 **Status:** Design approved, ready for implementation planning
@@ -55,7 +55,7 @@ Explicitly out of scope. Each is a deliberate exclusion, not an oversight:
 | Upload | Both a single-item form and a bulk queue |
 | Bulk grouping | Photos auto-grouped by EXIF capture time, correctable by hand |
 | Sold items | Stay inline in the grid, desaturated, marked נמכר |
-| Address | Shown publicly on the site, from settings |
+| Shop name & address | Not in the spec or the code. Set by the seller in admin settings; the address renders publicly once set |
 | Visual direction | "Arc Canonical" — see §11 |
 
 ## 4. Architecture
@@ -238,7 +238,8 @@ got there first — roll back, re-read which of the requested items are no longe
 
 Server component. Reads `?category=`, `?maxPrice=`, `?sort=` from `searchParams`.
 Sticky glass header (shop name, cart with count, ניהול button), a hero carrying the
-tagline, address and "תשלום בביט · איסוף עצמי", then a sticky filter bar of category
+tagline, address and "תשלום בביט · איסוף עצמי" — each rendered only if set, see §10 —
+then a sticky filter bar of category
 chips, a max-price slider and a sort select.
 
 Items render as cards: photo, name, two-line description, price, category, pickup window,
@@ -382,11 +383,21 @@ item deletes its directory.
 `PORT` is supplied by Railway. The app refuses to start if `ADMIN_PASSWORD_HASH` or
 `SESSION_SECRET` is missing, rather than booting with an open admin.
 
-Seller-facing values — shop name, tagline, BIT number, address — are **not** environment
-variables. They live in the `Settings` row and are edited in admin. The seed writes
-placeholder values (shop name `החצר`, tagline `מכירת חצר · איסוף עצמי`, and clearly fake
-BIT number and address) so the site is coherent on first boot and the seller replaces
-them in `/admin/settings`.
+Seller-facing values — shop name, tagline, BIT number, address, city — are **not**
+environment variables, are **not** seeded with sample content, and appear nowhere in the
+codebase. They live in the `Settings` row and exist only once the seller types them into
+`/admin/settings`. The seed inserts the row with empty strings.
+
+First-run behaviour follows from that:
+
+- Every one of these fields renders only when non-empty. An unset tagline, address or
+  city simply produces no element — never a placeholder, never a fallback string.
+- With `shopName` unset the header shows the mark alone.
+- **Checkout is blocked while `bitPhone` is unset**, because a buyer would otherwise
+  reserve items with no way to pay. The grid stays browsable; the cart says the shop is
+  not open for orders yet.
+- `/admin` shows a first-run checklist of what is still unset, with `bitPhone` flagged as
+  the one that blocks selling.
 
 ## 11. Visual direction — "Arc Canonical"
 
@@ -394,8 +405,9 @@ Chosen from three mockups. The approved screens are committed as static HTML in
 `docs/design/mockups/` and are the visual reference for implementation —
 `01-shop.html`, `02-buyer-flow.html`, `03-admin-items.html`, `04-admin-orders.html`.
 The two rejected directions are kept alongside them as `alt-gallery.html` and
-`alt-nightfall.html`. Their photos are random `picsum.photos` placeholders; only the
-layout, colour and typography are normative.
+`alt-nightfall.html`. Their photos are random `picsum.photos` placeholders and the shop
+name, tagline and address in them are illustrative only — those come from settings at
+runtime. Only the layout, colour and typography are normative.
 
 - A fixed, warm mesh-gradient ground — peach, lilac, pale sky, low saturation, no hard
   edges — with content floating above it.
@@ -458,7 +470,8 @@ command is `node server.js`, and a pre-deploy step runs `prisma migrate deploy`.
 
 Required Railway setup: the Postgres plugin, a volume mounted at `/data`, and the four
 environment variables from §10. The first deploy runs the seed, which creates the
-`Settings` row with placeholders and no items.
+`Settings` row with empty strings and no items.
 
-The seller's first session is: open `/admin`, log in, set the real shop name, BIT number
-and address in settings, then bulk-upload photos.
+The seller's first session is: open `/admin`, log in, set the shop name, BIT number and
+address in settings — until the BIT number is set the shop cannot take orders — then
+bulk-upload photos.
