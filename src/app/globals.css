@@ -159,3 +159,85 @@ header {
   text-align: center; font-weight: 700; font-size: 14px; letter-spacing: 0.04em;
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
 }
+
+/* ── item detail ────────────────────────────────────────────
+   Shared by the standalone /item/[slug] page and the @modal quick-look
+   overlay — both render the same ItemDetail component. Styling lifted
+   from docs/design/mockups/02-buyer-flow.html, panel 1 ("מבט מהיר"). */
+.item-page { padding-block: 40px 100px; display: flex; justify-content: center; }
+.item-page .detail {
+  max-width: 460px; width: 100%; background: var(--card);
+  border-radius: var(--r-lg); box-shadow: var(--sh-2); overflow: hidden;
+}
+.detail { display: flex; flex-direction: column; }
+
+.ql-photo {
+  position: relative; margin-block-start: 14px; margin-inline: 14px;
+  border-radius: 22px; overflow: hidden; aspect-ratio: 4 / 3.4; background: #EEE9E4;
+}
+.ql-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ql-cat {
+  position: absolute; inset-block-start: 11px; inset-inline-start: 11px;
+  background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 600; color: var(--ink-2);
+}
+
+.strip { display: flex; gap: 8px; padding-block: 11px 4px; padding-inline: 14px; }
+.thumb {
+  width: 56px; height: 56px; flex: none; border-radius: 13px; overflow: hidden;
+  border: 2px solid transparent; opacity: 0.62; transition: 0.16s; background: none; padding: 0; cursor: pointer;
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb.on { border-color: var(--ink); opacity: 1; }
+
+.ql-body { padding-inline: 18px; padding-block-start: 8px; flex: 1; }
+.ql-top { display: flex; align-items: baseline; gap: 12px; }
+.ql-top h2 { font-size: 22px; margin: 0; letter-spacing: -0.025em; margin-inline-end: auto; }
+.ql-price { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.ql-desc { font-size: 14.5px; color: var(--ink-2); margin-block: 9px 15px; }
+
+.facts { border-block-start: 1px solid var(--line); padding-block-start: 13px; display: flex; flex-direction: column; gap: 9px; }
+.fact { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); }
+.fact i {
+  width: 26px; height: 26px; border-radius: 8px; background: var(--accent-soft); flex: none;
+  display: grid; place-items: center; font-style: normal; font-size: 13px;
+}
+.fact b { color: var(--ink); font-weight: 600; }
+
+.foot-btn { padding-block: 14px 18px; padding-inline: 18px; }
+.btn-primary {
+  width: 100%; border: 0; border-radius: 16px; padding: 15px; font: inherit; font-weight: 700;
+  font-size: 16px; cursor: pointer; background: var(--ink); color: #fff; transition: 0.18s;
+}
+.btn-primary:hover { background: #000; }
+.btn-accent { background: var(--accent); }
+.btn-accent:hover { background: #C8452B; }
+.sold-note {
+  margin: 0; text-align: center; font-size: 14px; font-weight: 600; color: var(--ink-3);
+  background: #FAF8F6; border-radius: 16px; padding: 15px;
+}
+
+/* ── quick-look overlay ─────────────────────────────────────
+   `router.back()` on the backdrop and the close button return to the grid
+   with its URL — filters and scroll position — intact; see QuickLookModal. */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100; background: rgba(27, 25, 23, 0.5); backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.modal-panel {
+  background: var(--card); border-radius: 26px; box-shadow: var(--sh-3);
+  width: 100%; max-width: 420px; max-height: min(90vh, 760px);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.nav { display: flex; align-items: center; gap: 10px; padding-block: 8px 14px; padding-inline: 18px; flex: none; }
+.nav h4 { font-size: 17px; margin: 0; letter-spacing: -0.02em; margin-inline-end: auto; }
+.x {
+  width: 32px; height: 32px; border-radius: 50%; background: #F2EFEC; border: 0; cursor: pointer;
+  font-size: 17px; color: var(--ink-2); display: grid; place-items: center; flex: none;
+}
+.modal-scroll { overflow-y: auto; flex: 1; }
+
+@media (max-width: 480px) {
+  .modal-backdrop { padding: 0; align-items: flex-end; }
+  .modal-panel { max-width: none; max-height: 92vh; border-radius: 26px 26px 0 0; }
+}

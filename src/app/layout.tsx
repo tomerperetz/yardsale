@@ -1,7 +1,13 @@
 import './globals.css'
 import type { ReactNode } from 'react'
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({
+  children,
+  modal,
+}: {
+  children: ReactNode
+  modal: ReactNode
+}) {
   return (
     <html lang="he" dir="rtl">
       <head>
@@ -12,7 +18,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        {modal}
+      </body>
     </html>
   )
 }
