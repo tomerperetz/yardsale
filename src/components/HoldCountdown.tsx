@@ -34,8 +34,11 @@ export function HoldCountdown({ holdExpiresAt }: { holdExpiresAt: Date }) {
 
   return (
     <div className="timer">
-      <span className="clock" dir="ltr">
-        {minutes}:{String(seconds).padStart(2, '0')}
+      {/* See OrderCountdown: server and client render different seconds, which
+          is not a corrupt tree. Suppressed so React hydrates instead of
+          discarding the server HTML for the route. */}
+      <span className="clock" dir="ltr" suppressHydrationWarning>
+        {`${minutes}:${String(seconds).padStart(2, '0')}`}
       </span>
       <span className="t">
         <b>הפריטים שמורים לך</b>

@@ -30,9 +30,14 @@ export function OrderCountdown({ holdExpiresAt }: { holdExpiresAt: Date }) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
 
+  // The server renders one second and the browser hydrates in the next, so
+  // this text legitimately differs between the two. Without the suppression
+  // React treats it as a corrupt tree, logs a hydration error and re-renders
+  // the whole route on the client. The effect above corrects the digits on
+  // mount, so the server's value is visible for a single frame at most.
   return (
-    <span dir="ltr">
-      {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+    <span dir="ltr" suppressHydrationWarning>
+      {`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`}
     </span>
   )
 }
