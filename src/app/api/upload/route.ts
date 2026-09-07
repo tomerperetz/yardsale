@@ -24,8 +24,8 @@ const takenAtSchema = z
   .catch(undefined)
 
 function photoId(): string {
-  // Lowercase hex only, so it satisfies the serving route's filename regex
-  // (src/app/img/[itemId]/[file]/route.ts) with no risk of stray characters.
+  // Lowercase hex only, so it satisfies the serving route's photo-id regex
+  // (src/app/img/[photoId]/[file]/route.ts) with no risk of stray characters.
   return randomBytes(12).toString('hex')
 }
 
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
     // was never created) — the latter must clean up its own files too.
     let stored: Awaited<ReturnType<typeof storePhoto>> | null = null
     try {
-      stored = await storePhoto(buf, itemId, id)
+      stored = await storePhoto(buf, id)
 
       const takenAtRaw = takenAtValues[i]
       const takenAt = takenAtRaw ? takenAtSchema.parse(takenAtRaw) : undefined
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
       photos.push({ id, lqip: stored.lqip, width: stored.width, height: stored.height })
       count += 1
     } catch {
-      if (stored) await deletePhotoFiles(itemId, id)
+      if (stored) await deletePhotoFiles(id)
       errors.push(
         stored
           ? `${file.name}: שגיאה בשמירת התמונה. נסו שוב.`

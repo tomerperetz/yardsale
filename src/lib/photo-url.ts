@@ -26,11 +26,17 @@ export const MAX_PHOTOS_PER_ITEM = 10
 export const MAX_REQUEST_BYTES = 64 * 1024 * 1024
 
 /** The file one width of one photo is stored as, on disk and in the URL. */
-export function photoFilename(photoId: string, width: number): string {
-  return `${photoId}-${width}.webp`
+export function photoFilename(width: PhotoWidth): string {
+  return `${width}.webp`
 }
 
-/** Where the browser fetches one width of one photo — see src/app/img/[itemId]/[file]/route.ts. */
-export function photoUrl(itemId: string, photoId: string, width: PhotoWidth = 400): string {
-  return `/img/${itemId}/${photoFilename(photoId, width)}`
+/**
+ * Where the browser fetches one width of one photo.
+ *
+ * Deliberately free of any item id: a photo may not belong to an item yet
+ * (an import batch), and moving one between items must not move files.
+ * See src/app/img/[photoId]/[file]/route.ts.
+ */
+export function photoUrl(photoId: string, width: PhotoWidth = 400): string {
+  return `/img/${photoId}/${photoFilename(width)}`
 }

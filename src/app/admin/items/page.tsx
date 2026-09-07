@@ -164,7 +164,7 @@ export default async function AdminItemsPage({
                             <td data-label="פריט">
                               <span className={styles.it}>
                                 {photo ? (
-                                  <img src={photoUrl(item.id, photo.id)} alt="" />
+                                  <img src={photoUrl(photo.id)} alt="" />
                                 ) : (
                                   <span
                                     aria-hidden

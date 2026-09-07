@@ -120,7 +120,7 @@ export function PhotoDrop({
 
   async function handleRemove(photoId: string) {
     onPhotosChange(photos.filter((p) => p.id !== photoId))
-    await removePhotoAction(itemId, photoId)
+    await removePhotoAction(photoId)
   }
 
   function handleDropReorder(targetId: string) {
@@ -170,7 +170,7 @@ export function PhotoDrop({
                 handleDropReorder(p.id)
               }}
             >
-              <img src={photoUrl(itemId, p.id)} alt="" style={{ backgroundImage: `url(${p.lqip})` }} />
+              <img src={photoUrl(p.id)} alt="" style={{ backgroundImage: `url(${p.lqip})` }} />
               <button type="button" className={styles.rm} onClick={() => handleRemove(p.id)} aria-label="הסרת תמונה">
                 ✕
               </button>

@@ -3,7 +3,7 @@ import { mkdtemp, rm, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
-import { sniffImageType, storePhoto, deletePhotoFiles, photoFilename, WIDTHS } from '@/lib/images'
+import { sniffImageType, storePhoto, deletePhotoFiles, photoDir, photoFilename, WIDTHS } from '@/lib/images'
 
 let dir: string
 
@@ -35,36 +35,42 @@ describe('sniffImageType', () => {
   })
 })
 
+describe('photoDir', () => {
+  it('gives a photo its own directory, named by the photo alone', () => {
+    expect(photoDir('photo1')).toBe(path.join(dir, 'photo1'))
+  })
+})
+
 describe('storePhoto', () => {
-  it('writes one webp per width', async () => {
-    await storePhoto(await jpeg(), 'item1', 'photo1')
-    const files = await readdir(path.join(dir, 'item1'))
-    expect(files.sort()).toEqual(WIDTHS.map((w) => photoFilename('photo1', w)).sort())
+  it("writes one webp per width, in the photo's own directory", async () => {
+    await storePhoto(await jpeg(), 'photo1')
+    const files = await readdir(path.join(dir, 'photo1'))
+    expect(files.sort()).toEqual(WIDTHS.map((w) => photoFilename(w)).sort())
   })
 
   it('returns the original dimensions', async () => {
-    const r = await storePhoto(await jpeg(), 'item1', 'photo1')
+    const r = await storePhoto(await jpeg(), 'photo1')
     expect(r.width).toBe(2400)
     expect(r.height).toBe(1800)
   })
 
   it('returns a data-uri blur placeholder', async () => {
-    const r = await storePhoto(await jpeg(), 'item1', 'photo1')
+    const r = await storePhoto(await jpeg(), 'photo1')
     expect(r.lqip.startsWith('data:image/webp;base64,')).toBe(true)
     expect(r.lqip.length).toBeLessThan(2000)
   })
 
   it('never upscales a small original', async () => {
     const small = await sharp({ create: { width: 300, height: 200, channels: 3, background: '#000' } }).jpeg().toBuffer()
-    await storePhoto(small, 'item2', 'photo2')
-    const meta = await sharp(path.join(dir, 'item2', photoFilename('photo2', 1600))).metadata()
+    await storePhoto(small, 'photo2')
+    const meta = await sharp(path.join(dir, 'photo2', photoFilename(1600))).metadata()
     expect(meta.width).toBe(300)
   })
 
   it('strips exif, including GPS', async () => {
     const withExif = await sharp(await jpeg()).withExif({ IFD0: { Copyright: 'x' } }).toBuffer()
-    await storePhoto(withExif, 'item3', 'photo3')
-    const meta = await sharp(path.join(dir, 'item3', photoFilename('photo3', 800))).metadata()
+    await storePhoto(withExif, 'photo3')
+    const meta = await sharp(path.join(dir, 'photo3', photoFilename(800))).metadata()
     expect(meta.exif).toBeUndefined()
   })
 
@@ -73,25 +79,33 @@ describe('storePhoto', () => {
     // cannot decode it, so this fails deterministically.
     const truncated = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from('not a real png')])
 
-    await expect(storePhoto(truncated, 'item4', 'photo4')).rejects.toThrow()
+    await expect(storePhoto(truncated, 'photo4')).rejects.toThrow()
 
-    const files = await readdir(path.join(dir, 'item4'))
+    const files = await readdir(path.join(dir, 'photo4'))
     expect(files).toEqual([])
   })
 })
 
 describe('deletePhotoFiles', () => {
   it('removes every width variant of a stored photo', async () => {
-    await storePhoto(await jpeg(), 'item5', 'photo5')
-    const before = await readdir(path.join(dir, 'item5'))
-    expect(before.sort()).toEqual(WIDTHS.map((w) => photoFilename('photo5', w)).sort())
+    await storePhoto(await jpeg(), 'photo5')
+    const before = await readdir(path.join(dir, 'photo5'))
+    expect(before.sort()).toEqual(WIDTHS.map((w) => photoFilename(w)).sort())
 
-    await deletePhotoFiles('item5', 'photo5')
-    const after = await readdir(path.join(dir, 'item5'))
-    expect(after).toEqual([])
+    await deletePhotoFiles('photo5')
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('leaves other photos alone', async () => {
+    await storePhoto(await jpeg(), 'photo6')
+    await storePhoto(await jpeg(), 'photo7')
+
+    await deletePhotoFiles('photo6')
+
+    expect(await readdir(dir)).toEqual(['photo7'])
   })
 
   it('resolves rather than throwing when there is nothing to remove', async () => {
-    await expect(deletePhotoFiles('item5', 'photo5')).resolves.toBeUndefined()
+    await expect(deletePhotoFiles('photo5')).resolves.toBeUndefined()
   })
 })

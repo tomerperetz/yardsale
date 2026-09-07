@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { ItemStatus, OrderStatus } from '@prisma/client'
 import { db } from '@/lib/db'
+import { photoDir, photoFilename } from '@/lib/images'
 import { resetDb } from '../helpers/db'
 import { makeItem, makeOrder } from '../helpers/factories'
 import {
@@ -101,6 +106,35 @@ describe('deleteItem', () => {
     expect(await deleteItem(r.id)).toEqual({ ok: true })
     expect(await db.item.findUnique({ where: { id: r.id } })).toBeNull()
     expect(await db.photo.count({ where: { itemId: r.id } })).toBe(0)
+  })
+
+  it('removes the files of every photo it deleted', async () => {
+    // The rows are gone once deleteItem returns, so the only way it can name
+    // these directories is by reading the ids before it deleted them. A
+    // version that looks them up afterwards finds nothing and leaks the files.
+    const previous = process.env.UPLOAD_DIR
+    const uploads = await mkdtemp(path.join(tmpdir(), 'ys-'))
+    process.env.UPLOAD_DIR = uploads
+    try {
+      const r = await createItem(valid)
+      if (!r.ok) throw new Error('expected ok')
+
+      const ids: string[] = []
+      for (const position of [0, 1]) {
+        const photo = await db.photo.create({ data: { itemId: r.id, width: 800, height: 600, lqip: 'x', position } })
+        ids.push(photo.id)
+        await mkdir(photoDir(photo.id), { recursive: true })
+        await writeFile(path.join(photoDir(photo.id), photoFilename(400)), 'not really a webp')
+      }
+
+      expect(await deleteItem(r.id)).toEqual({ ok: true })
+
+      for (const id of ids) expect(existsSync(photoDir(id))).toBe(false)
+    } finally {
+      if (previous === undefined) delete process.env.UPLOAD_DIR
+      else process.env.UPLOAD_DIR = previous
+      await rm(uploads, { recursive: true, force: true })
+    }
   })
 
   it('refuses to delete an item that belongs to an order', async () => {

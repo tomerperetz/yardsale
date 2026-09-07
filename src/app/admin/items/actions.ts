@@ -56,9 +56,9 @@ export async function deleteItemAction(id: string): Promise<DeleteResult> {
 }
 
 /** Removes one photo — its row and every width variant on disk. */
-export async function removePhotoAction(itemId: string, photoId: string): Promise<{ ok: true }> {
+export async function removePhotoAction(photoId: string): Promise<{ ok: true }> {
   await db.photo.delete({ where: { id: photoId } }).catch(() => null)
-  await deletePhotoFiles(itemId, photoId)
+  await deletePhotoFiles(photoId)
   return { ok: true }
 }
 

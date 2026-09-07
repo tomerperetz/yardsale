@@ -18,7 +18,7 @@ export function ItemCard({ item }: { item: CardItem }) {
   const sold = item.status === 'SOLD'
   const href = `/item/${item.slug}`
   const photo = item.photos[0] as Photo | undefined
-  const photoSrc = photo ? photoUrl(item.id, photo.id, 800) : undefined
+  const photoSrc = photo ? photoUrl(photo.id, 800) : undefined
 
   return (
     <article className={sold ? 'card sold' : 'card'}>

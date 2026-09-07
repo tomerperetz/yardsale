@@ -24,16 +24,26 @@ export function sniffImageType(buf: Buffer): 'jpeg' | 'png' | 'webp' | 'heic' | 
   return null
 }
 
-function uploadDir(): string {
+/**
+ * The volume every photo directory sits in. Exported so the one-shot layout
+ * migration (scripts/migrate-photo-layout.ts) can find the old item-keyed
+ * directories without restating the default and drifting from it.
+ */
+export function uploadDir(): string {
   return process.env.UPLOAD_DIR ?? '/data/uploads'
 }
 
-export function itemDir(itemId: string): string {
-  return path.join(uploadDir(), itemId)
+/**
+ * One photo owns one directory. Keyed by the photo and not by its item, so a
+ * photo can be stored before anything knows which product it shows, and moving
+ * one between items is a database UPDATE with no file I/O to half-fail.
+ */
+export function photoDir(photoId: string): string {
+  return path.join(uploadDir(), photoId)
 }
 
-export async function storePhoto(buf: Buffer, itemId: string, photoId: string) {
-  const dir = itemDir(itemId)
+export async function storePhoto(buf: Buffer, photoId: string) {
+  const dir = photoDir(photoId)
   await mkdir(dir, { recursive: true })
 
   const written: string[] = []
@@ -51,7 +61,7 @@ export async function storePhoto(buf: Buffer, itemId: string, photoId: string) {
         .resize({ width: Math.min(w, width || w), withoutEnlargement: true })
         .webp({ quality: 82 })
         .toBuffer()
-      const filePath = path.join(dir, photoFilename(photoId, w))
+      const filePath = path.join(dir, photoFilename(w))
       await writeFile(filePath, out)
       written.push(filePath)
     }
@@ -70,18 +80,17 @@ export async function storePhoto(buf: Buffer, itemId: string, photoId: string) {
 }
 
 /**
- * Removes every width variant of one photo. Used on error paths — e.g. when
- * storePhoto succeeded but the Photo row was never created — so it must
- * never throw itself; a cleanup failure here would replace the caller's
- * real error with an unrelated one.
+ * Removes every width variant of one photo — the whole directory, which is
+ * this photo's alone. Used on error paths — e.g. when storePhoto succeeded but
+ * the Photo row was never created — so it must never throw itself; a cleanup
+ * failure here would replace the caller's real error with an unrelated one.
+ *
+ * There is deliberately no "delete every photo of this item": once storage is
+ * keyed by photo, an item's photos are not one directory. A caller deleting an
+ * item must collect its photo ids first — see deleteItem in
+ * src/lib/admin/items.ts, which reads them inside its transaction, before the
+ * rows that name them are gone.
  */
-export async function deletePhotoFiles(itemId: string, photoId: string): Promise<void> {
-  const dir = itemDir(itemId)
-  await Promise.all(
-    WIDTHS.map((w) => rm(path.join(dir, photoFilename(photoId, w)), { force: true }).catch(() => {})),
-  )
-}
-
-export async function deleteItemPhotos(itemId: string): Promise<void> {
-  await rm(itemDir(itemId), { recursive: true, force: true })
+export async function deletePhotoFiles(photoId: string): Promise<void> {
+  await rm(photoDir(photoId), { recursive: true, force: true }).catch(() => {})
 }

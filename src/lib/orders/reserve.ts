@@ -21,12 +21,12 @@ export type ReserveResult =
   | { ok: false; reason: 'SHOP_NOT_OPEN' }
 
 /**
- * Checkout is unauthenticated and item ids are public — they appear in every
- * /img/<itemId>/… URL — so without a cap one caller could POST the whole
- * catalogue and hold the entire shop RESERVED for a full hold window. A
- * household clear-out is a few dozen items in total; twenty in one order is
- * already more than any real buyer carries away in one trip, and it keeps a
- * single request from ever locking the shop.
+ * Checkout is unauthenticated and item ids are public — every card in the shop
+ * grid carries one, for the add-to-cart button — so without a cap one caller
+ * could POST the whole catalogue and hold the entire shop RESERVED for a full
+ * hold window. A household clear-out is a few dozen items in total; twenty in
+ * one order is already more than any real buyer carries away in one trip, and
+ * it keeps a single request from ever locking the shop.
  */
 export const MAX_ITEMS_PER_ORDER = 20
 

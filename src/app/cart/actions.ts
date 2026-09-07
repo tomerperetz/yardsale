@@ -50,7 +50,7 @@ export async function getCartData(
         name: item.name,
         priceAgorot: item.priceAgorot,
         status: item.status,
-        photoUrl: photo ? photoUrl(item.id, photo.id) : null,
+        photoUrl: photo ? photoUrl(photo.id) : null,
       },
     ]
   })

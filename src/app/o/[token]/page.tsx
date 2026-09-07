@@ -107,7 +107,7 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
               const photo = line.item.photos[0]
               return (
                 <div key={line.id} className="mini">
-                  {photo && <img src={photoUrl(line.item.id, photo.id)} alt="" />}
+                  {photo && <img src={photoUrl(photo.id)} alt="" />}
                   <span className="n">{line.item.name}</span>
                   <Price agorot={line.priceAgorot} className="p" />
                 </div>

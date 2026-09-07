@@ -45,7 +45,7 @@ export function ItemDetail({
         className="ql-photo"
         style={active ? { backgroundImage: `url(${active.lqip})`, backgroundSize: 'cover' } : undefined}
       >
-        {active && <img src={photoUrl(item.id, active.id, PHOTO_WIDTH)} alt="" />}
+        {active && <img src={photoUrl(active.id, PHOTO_WIDTH)} alt="" />}
         <span className="ql-cat">{item.category.name}</span>
       </div>
 
@@ -59,7 +59,7 @@ export function ItemDetail({
               onClick={() => setActiveIndex(i)}
               aria-label={`תמונה ${i + 1}`}
             >
-              <img src={photoUrl(item.id, photo.id, THUMB_WIDTH)} alt="" />
+              <img src={photoUrl(photo.id, THUMB_WIDTH)} alt="" />
             </button>
           ))}
         </div>

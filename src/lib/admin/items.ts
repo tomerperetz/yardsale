@@ -2,7 +2,7 @@ import { ItemStatus, OrderStatus, Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { parseShekelInput } from '@/lib/money'
 import { hebrewSlug, randomSuffix } from '@/lib/slug'
-import { deleteItemPhotos } from '@/lib/images'
+import { deletePhotoFiles } from '@/lib/images'
 import { DRAFT_NAME } from '@/lib/admin/draft'
 import { SELLABLE_STATUSES, type SellableStatus } from '@/lib/admin/item-status'
 
@@ -143,15 +143,6 @@ export async function updateItem(id: string, input: ItemInput): Promise<ItemResu
   })
 }
 
-/**
- * Refuses to delete an item that is RESERVED or SOLD, or that appears on any
- * order (even one that later reverted the item to AVAILABLE) — deleting one
- * would orphan an OrderItem row and corrupt a buyer's order history.
- *
- * The filesystem removal happens only after the database transaction has
- * committed, so a failed transaction never leaves the row pointing at
- * already-deleted files.
- */
 // Every seller-settable status is a real ItemStatus. The client-side edit
 // screen imports the list from the import-free module; this is what stops the
 // two definitions drifting apart without anyone noticing.
@@ -215,6 +206,15 @@ export async function setItemStatus(id: string, status: SellableStatus): Promise
   })
 }
 
+/**
+ * Refuses to delete an item that is RESERVED or SOLD, or that appears on any
+ * order (even one that later reverted the item to AVAILABLE) — deleting one
+ * would orphan an OrderItem row and corrupt a buyer's order history.
+ *
+ * The filesystem removal happens only after the database transaction has
+ * committed, so a failed transaction never leaves the row pointing at
+ * already-deleted files.
+ */
 export async function deleteItem(id: string): Promise<DeleteResult> {
   const result = await db.$transaction(async (tx) => {
     const item = await tx.item.findUnique({
@@ -227,11 +227,23 @@ export async function deleteItem(id: string): Promise<DeleteResult> {
       return { ok: false as const, error: 'אי אפשר למחוק פריט ששייך להזמנה.' }
     }
 
+    // Read the ids before the rows go: files are keyed by photo, so once
+    // these rows are deleted nothing on disk or in the database still ties a
+    // file to this item. Looking them up after the transaction would find
+    // none and leave every width of every photo behind forever.
+    const photos = await tx.photo.findMany({ where: { itemId: id }, select: { id: true } })
+
     await tx.photo.deleteMany({ where: { itemId: id } })
     await tx.item.delete({ where: { id } })
-    return { ok: true as const }
+    return { ok: true as const, photoIds: photos.map((p) => p.id) }
   })
 
-  if (result.ok) await deleteItemPhotos(id)
-  return result
+  if (!result.ok) return result
+
+  // Only once the rows are committed gone, so a crash between the two never
+  // leaves a Photo row pointing at a file that isn't there. deletePhotoFiles
+  // never throws, so a cleanup failure cannot turn a successful delete into
+  // an error the seller sees.
+  await Promise.all(result.photoIds.map((photoId) => deletePhotoFiles(photoId)))
+  return { ok: true }
 }
