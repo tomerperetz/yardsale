@@ -3,7 +3,7 @@
   "build": { "builder": "NIXPACKS" },
   "deploy": {
     "preDeployCommand": "npx prisma migrate deploy && npx tsx prisma/seed.ts",
-    "startCommand": "node .next/standalone/server.js",
+    "startCommand": "npm start",
     "restartPolicyType": "ON_FAILURE"
   }
 }

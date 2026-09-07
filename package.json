@@ -8,7 +8,7 @@
     "dev": "next dev",
     "build": "next build",
     "postbuild": "cp -r .next/static .next/standalone/.next/static && { [ -d public ] && cp -r public .next/standalone/public || true; }",
-    "start": "node .next/standalone/server.js",
+    "start": "prisma migrate deploy && node .next/standalone/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
