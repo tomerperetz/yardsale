@@ -159,7 +159,7 @@ export default async function AdminItemsPage({
                         const photo = item.photos[0]
                         return (
                           <tr key={item.id}>
-                            <td>
+                            <td data-label="פריט">
                               <span className={styles.it}>
                                 {photo ? (
                                   <img src={photoUrl(item.id, photo.id)} alt="" />
@@ -182,14 +182,14 @@ export default async function AdminItemsPage({
                                 </span>
                               </span>
                             </td>
-                            <td>{item.category.name}</td>
-                            <td>
+                            <td data-label="קטגוריה">{item.category.name}</td>
+                            <td data-label="מחיר">
                               <Price agorot={item.priceAgorot} />
                             </td>
-                            <td>
+                            <td data-label="איסוף">
                               {item.status === 'SOLD' ? '—' : <PickupWindow from={item.pickupFrom} to={item.pickupTo} />}
                             </td>
-                            <td>
+                            <td data-label="סטטוס">
                               <span className={`${styles.pill} ${styles[STATUS_CLASS[item.status]]}`}>
                                 {STATUS_LABEL[item.status]}
                               </span>

@@ -243,3 +243,69 @@
   color: var(--ink-3);
   line-height: 1.5;
 }
+
+/* ── phone: each row becomes a stacked card ──────────────────
+   Same technique as /admin/orders, at the same width, so the two admin
+   tables behave identically: the markup stays a real <table> for assistive
+   tech and wide screens, and only the `display` changes below a phone
+   width. Six columns will not fit in 390px, and leaving it as a
+   sideways-scrolling container hid the עריכה action off-screen — the one
+   control every row exists to offer. */
+@media (max-width: 700px) {
+  .tableWrap {
+    overflow-x: visible;
+  }
+  .table thead {
+    display: none;
+  }
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: 100%;
+  }
+  .table tr {
+    margin-block-end: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 4px 12px;
+    background: #fff;
+  }
+  .table tr:last-child {
+    margin-block-end: 0;
+  }
+  .table td {
+    border-block-end: 0;
+    padding: 7px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .table tr:last-child td {
+    border-block-end: 0;
+  }
+  .table td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+    min-width: 58px;
+    flex: none;
+  }
+  /* The action cell has no label and gets the full width, so the edit
+     button is a full-width tap target rather than a 60px sliver. */
+  .table td:last-child {
+    display: block;
+    padding-block: 10px 8px;
+  }
+  .table td:last-child::before {
+    content: none;
+  }
+  .table td:last-child .rowbtn {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+}
