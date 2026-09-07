@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { getPublicCategories } from '@/lib/items'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { itemsOrderBy, itemsWhere, parseGridParams } from '@/lib/grid'
@@ -18,7 +19,7 @@ export default async function Home({
   const params = parseGridParams(await searchParams)
   const [settings, categories, items] = await Promise.all([
     getSettings(),
-    db.category.findMany({ orderBy: { name: 'asc' } }),
+    getPublicCategories(),
     db.item.findMany({
       where: itemsWhere(params),
       orderBy: itemsOrderBy(params),
@@ -27,6 +28,7 @@ export default async function Home({
   ])
 
   const availableCount = items.filter((item) => item.status !== 'SOLD').length
+  const filtered = params.category !== undefined || params.maxPrice !== undefined
 
   return (
     <>
@@ -55,11 +57,34 @@ export default async function Home({
 
         <Filters categories={categories} current={params} />
 
-        <main className="grid">
-          {items.map((item) => (
-            <ItemCard key={item.id} item={item} />
-          ))}
-        </main>
+        {items.length > 0 ? (
+          <main className="grid">
+            {items.map((item) => (
+              <ItemCard key={item.id} item={item} />
+            ))}
+          </main>
+        ) : (
+          // Without this the page just stops below the filters, and a buyer who
+          // drags the price slider too low cannot tell a filter that matched
+          // nothing from a broken page. The two cases read differently on
+          // purpose: an empty shop is the seller's first screen after deploying.
+          <main className="grid-empty">
+            {filtered ? (
+              <>
+                <p className="grid-empty-title">אין פריטים שמתאימים לסינון</p>
+                <p>נסו להעלות את טווח המחיר או לבחור קטגוריה אחרת.</p>
+                <a className="grid-empty-reset" href="/">
+                  ניקוי הסינון
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="grid-empty-title">עדיין אין פריטים למכירה</p>
+                <p>ברגע שיעלו פריטים ראשונים הם יופיעו כאן.</p>
+              </>
+            )}
+          </main>
+        )}
       </div>
     </>
   )

@@ -113,6 +113,18 @@ header {
 
 /* ── grid ───────────────────────────────────────────────── */
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); padding-block-end: 130px; }
+
+/* Shown instead of the grid when nothing matches — see src/app/page.tsx. */
+.grid-empty {
+  background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-1);
+  padding: 56px 28px; text-align: center; color: var(--ink-3); margin-block-end: 130px;
+}
+.grid-empty p { margin: 0; }
+.grid-empty p.grid-empty-title { font-size: 18px; font-weight: 600; color: var(--ink); margin-block-end: 6px; }
+.grid-empty-reset {
+  display: inline-block; margin-block-start: 18px; padding: 9px 18px; border-radius: 999px;
+  background: var(--ink); color: #fff; text-decoration: none; font-size: 14px; font-weight: 600;
+}
 @media (max-width: 1080px) { .grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 760px) {
   .grid { grid-template-columns: repeat(2, 1fr); }
