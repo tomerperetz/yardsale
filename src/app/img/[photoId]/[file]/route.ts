@@ -4,9 +4,8 @@ import { Readable } from 'node:stream'
 import path from 'node:path'
 import { NextResponse } from 'next/server'
 import { photoDir } from '@/lib/images'
-import { WIDTHS } from '@/lib/photo-url'
+import { PHOTO_ID_RE, WIDTHS } from '@/lib/photo-url'
 
-const PHOTO_ID_RE = /^[a-z0-9]+$/
 // Built from WIDTHS rather than restating them: a width added there must not
 // silently 404 here. The widths are plain integers, so nothing needs escaping.
 const FILE_RE = new RegExp(`^(${WIDTHS.join('|')})\\.webp$`)

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, rm, readdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
@@ -81,8 +82,20 @@ describe('storePhoto', () => {
 
     await expect(storePhoto(truncated, 'photo4')).rejects.toThrow()
 
-    const files = await readdir(path.join(dir, 'photo4'))
-    expect(files).toEqual([])
+    // The directory goes too, not just the files inside it — a seller
+    // retrying an undecodable photo must not leave one dead directory behind
+    // per attempt.
+    expect(existsSync(photoDir('photo4'))).toBe(false)
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('leaves the widths of other photos alone when one fails', async () => {
+    await storePhoto(await jpeg(), 'photo8')
+    const truncated = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from('not a real png')])
+
+    await expect(storePhoto(truncated, 'photo9')).rejects.toThrow()
+
+    expect(await readdir(dir)).toEqual(['photo8'])
   })
 })
 
@@ -107,5 +120,43 @@ describe('deletePhotoFiles', () => {
 
   it('resolves rather than throwing when there is nothing to remove', async () => {
     await expect(deletePhotoFiles('photo5')).resolves.toBeUndefined()
+  })
+
+})
+
+/**
+ * photoDir() is a path.join, so '' resolves to the upload volume itself and
+ * '..' to whatever sits above it — and deletePhotoFiles removes a directory
+ * recursively. removePhotoAction takes a photo id straight from a client
+ * server-action argument, so an id that is not a photo id must remove nothing.
+ */
+describe('deletePhotoFiles refuses an id that is not a photo id', () => {
+  // The upload directory is nested one level inside the sandbox on purpose:
+  // if the guard ever regressed, '..' could then only reach a directory this
+  // test owns, never the real tmpdir(). The guard is what is under test; the
+  // nesting is so that testing it can never itself be destructive.
+  let root: string
+  let uploads: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), 'ys-guard-'))
+    uploads = path.join(root, 'uploads')
+    await mkdir(uploads, { recursive: true })
+    process.env.UPLOAD_DIR = uploads
+  })
+  afterEach(() => rm(root, { recursive: true, force: true }))
+
+  it.each(['', '.', '..', '../..', 'a/b', 'PHOTO1', 'photo 1'])('refuses %o', async (badId) => {
+    await storePhoto(await jpeg(), 'photoa')
+    await storePhoto(await jpeg(), 'photob')
+    // Lives above the upload directory — what '..' would take with it.
+    const outside = path.join(root, 'outside.txt')
+    await writeFile(outside, 'must survive')
+
+    await expect(deletePhotoFiles(badId)).resolves.toBeUndefined()
+
+    expect((await readdir(uploads)).sort()).toEqual(['photoa', 'photob'])
+    expect((await readdir(photoDir('photoa'))).length).toBe(WIDTHS.length)
+    expect(existsSync(outside)).toBe(true)
   })
 })

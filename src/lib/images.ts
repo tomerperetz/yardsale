@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import sharp from 'sharp'
-import { WIDTHS, photoFilename } from '@/lib/photo-url'
+import { PHOTO_ID_RE, WIDTHS, photoFilename } from '@/lib/photo-url'
 
 // Re-exported so a caller doing image work has one import: the definitions
 // live in src/lib/photo-url.ts, which client components can import and this
@@ -46,7 +46,6 @@ export async function storePhoto(buf: Buffer, photoId: string) {
   const dir = photoDir(photoId)
   await mkdir(dir, { recursive: true })
 
-  const written: string[] = []
   try {
     // rotate() applies the EXIF orientation flag, and the re-encode drops all metadata,
     // which is also how GPS coordinates from a phone photo are removed.
@@ -61,9 +60,7 @@ export async function storePhoto(buf: Buffer, photoId: string) {
         .resize({ width: Math.min(w, width || w), withoutEnlargement: true })
         .webp({ quality: 82 })
         .toBuffer()
-      const filePath = path.join(dir, photoFilename(w))
-      await writeFile(filePath, out)
-      written.push(filePath)
+      await writeFile(path.join(dir, photoFilename(w)), out)
     }
 
     const blur = await sharp(buf).rotate().resize({ width: 16 }).webp({ quality: 30 }).toBuffer()
@@ -71,10 +68,12 @@ export async function storePhoto(buf: Buffer, photoId: string) {
     return { width, height, lqip: `data:image/webp;base64,${blur.toString('base64')}` }
   } catch (err) {
     // A failure partway through must never leave a partial width set on disk
-    // with no Photo row pointing at it — remove whatever this call already
-    // wrote before propagating the error. A cleanup failure must never mask
-    // the original error, so each removal swallows its own errors.
-    await Promise.all(written.map((f) => rm(f, { force: true }).catch(() => {})))
+    // with no Photo row pointing at it. The directory goes too: it belongs to
+    // this photo alone, and this photo will now never exist, so keeping it
+    // would leave one dead directory per retry of an undecodable file.
+    // deletePhotoFiles swallows its own errors, so a cleanup failure never
+    // masks the real one.
+    await deletePhotoFiles(photoId)
     throw err
   }
 }
@@ -92,5 +91,14 @@ export async function storePhoto(buf: Buffer, photoId: string) {
  * rows that name them are gone.
  */
 export async function deletePhotoFiles(photoId: string): Promise<void> {
+  // Validate before a recursive rm, because path.join('/data/uploads', '') is
+  // the upload volume itself and path.join('/data/uploads', '..') is its
+  // parent. Callers pass ids that came from a client — removePhotoAction takes
+  // one as a server-action argument and swallows the row miss — so an id that
+  // is not a photo id must remove nothing at all.
+  //
+  // Returns rather than throwing: see above, this runs on error paths.
+  if (!PHOTO_ID_RE.test(photoId)) return
+
   await rm(photoDir(photoId), { recursive: true, force: true }).catch(() => {})
 }

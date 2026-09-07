@@ -28,8 +28,9 @@ const valid = {
 
 /**
  * Checkout is the only unauthenticated endpoint that changes item
- * availability, and item ids are public — they appear in every /img/<itemId>/…
- * URL. Without a limiter one caller can hold the shop RESERVED on repeat.
+ * availability, and item ids are public — every card in the shop grid carries
+ * one, for the add-to-cart button. Without a limiter one caller can hold the
+ * shop RESERVED on repeat.
  */
 describe('checkout rate limiting', () => {
   beforeEach(() => {

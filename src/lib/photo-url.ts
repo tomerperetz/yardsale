@@ -25,6 +25,18 @@ export const MAX_PHOTOS_PER_ITEM = 10
  */
 export const MAX_REQUEST_BYTES = 64 * 1024 * 1024
 
+/**
+ * What a photo id is allowed to look like, and the only thing that may become
+ * a directory name under UPLOAD_DIR.
+ *
+ * Every id the server mints already satisfies it — cuid and the upload route's
+ * hex are both lowercase alphanumeric — so this exists for the ids it must
+ * reject: '' and '..' both survive `path.join`, turning a photo directory into
+ * the upload volume or its parent. Both the serving route and the delete path
+ * check it, from here, so the two cannot drift.
+ */
+export const PHOTO_ID_RE = /^[a-z0-9]+$/
+
 /** The file one width of one photo is stored as, on disk and in the URL. */
 export function photoFilename(width: PhotoWidth): string {
   return `${width}.webp`
