@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test'
-import { seedShop, makeClaimedOrder, cleanupItems, cleanupOrders, addAdminSession, adminTestPassword } from './fixtures'
+import {
+  seedShop,
+  makeAvailableItem,
+  makeClaimedOrder,
+  reserveOutOfBand,
+  cleanupItems,
+  cleanupOrders,
+  addAdminSession,
+  adminTestPassword,
+} from './fixtures'
 
 test.describe('admin', () => {
   test.beforeEach(async () => {
@@ -72,6 +81,53 @@ test.describe('admin', () => {
     } finally {
       await context.close()
       await cleanupOrders([order.token])
+      await cleanupItems([item.id])
+    }
+  })
+
+  test('the seller can mark a saved item sold from its edit screen, and put it back', async ({ browser }) => {
+    const item = await makeAvailableItem({ name: 'כורסת קריאה', price: 33000, category: 'ריהוט' })
+
+    const context = await browser.newContext({ locale: 'he-IL' })
+    try {
+      await addAdminSession(context)
+      const page = await context.newPage()
+
+      await page.goto(`/admin/items/${item.id}`)
+      await page.getByRole('button', { name: 'נמכר', exact: true }).click()
+
+      // The storefront is the assertion that matters — the seller marks it sold
+      // so that buyers stop trying to buy it.
+      await page.goto('/')
+      const card = page.locator('article.card', { hasText: item.name })
+      await expect(card).toContainText('נמכר')
+
+      await page.goto(`/admin/items/${item.id}`)
+      await page.getByRole('button', { name: 'זמין למכירה', exact: true }).click()
+
+      await page.goto('/')
+      await expect(page.locator('article.card', { hasText: item.name })).not.toHaveClass(/sold/)
+    } finally {
+      await context.close()
+      await cleanupItems([item.id])
+    }
+  })
+
+  test('an item a live order is holding offers the seller no status buttons', async ({ browser }) => {
+    const item = await makeAvailableItem({ name: 'מדף ספרים', price: 21000, category: 'ריהוט' })
+    const reservation = await reserveOutOfBand(item.id)
+
+    const context = await browser.newContext({ locale: 'he-IL' })
+    try {
+      await addAdminSession(context)
+      const page = await context.newPage()
+
+      await page.goto(`/admin/items/${item.id}`)
+      await expect(page.getByText('שמור להזמנה פעילה')).toBeVisible()
+      await expect(page.getByRole('button', { name: 'נמכר', exact: true })).toHaveCount(0)
+    } finally {
+      await context.close()
+      await cleanupOrders([reservation.token])
       await cleanupItems([item.id])
     }
   })

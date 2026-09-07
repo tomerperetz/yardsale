@@ -1,9 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ItemStatus } from '@prisma/client'
+import { ItemStatus, OrderStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { resetDb } from '../helpers/db'
 import { makeItem, makeOrder } from '../helpers/factories'
-import { createItem, openDraft, updateItem, deleteItem, normalizeCategoryName } from '@/lib/admin/items'
+import {
+  createItem,
+  openDraft,
+  setItemStatus,
+  updateItem,
+  deleteItem,
+  normalizeCategoryName,
+} from '@/lib/admin/items'
 import { DRAFT_NAME } from '@/lib/admin/draft'
 
 const valid = {
@@ -174,5 +181,66 @@ describe('openDraft', () => {
     const draft = await openDraft(blank)
     if (!draft.ok) throw new Error('expected ok')
     expect(draft.id).not.toBe(published.id)
+  })
+})
+
+describe('setItemStatus', () => {
+  beforeEach(resetDb)
+
+  const statusOf = (id: string) => db.item.findUniqueOrThrow({ where: { id } }).then((i) => i.status)
+
+  it('marks an available item sold, for the buyer who turned up in person', async () => {
+    const item = await makeItem({ status: ItemStatus.AVAILABLE })
+
+    expect((await setItemStatus(item.id, 'SOLD')).ok).toBe(true)
+    expect(await statusOf(item.id)).toBe(ItemStatus.SOLD)
+  })
+
+  it('puts a sold item back on sale when the sale falls through', async () => {
+    const item = await makeItem({ status: ItemStatus.SOLD })
+
+    expect((await setItemStatus(item.id, 'AVAILABLE')).ok).toBe(true)
+    expect(await statusOf(item.id)).toBe(ItemStatus.AVAILABLE)
+  })
+
+  it('refuses to move an item a live order is holding', async () => {
+    const item = await makeItem({ status: ItemStatus.RESERVED })
+    await makeOrder([item.id])
+
+    const result = await setItemStatus(item.id, 'SOLD')
+    expect(result).toEqual({
+      ok: false,
+      error: 'הפריט שמור להזמנה פעילה. בטלו את ההזמנה כדי לשחרר אותו.',
+    })
+    expect(await statusOf(item.id)).toBe(ItemStatus.RESERVED)
+  })
+
+  it('refuses to reopen an item that was sold through a paid order', async () => {
+    const item = await makeItem({ status: ItemStatus.SOLD })
+    await makeOrder([item.id], { status: OrderStatus.PAID, holdExpiresAt: null })
+
+    const result = await setItemStatus(item.id, 'AVAILABLE')
+    expect(result.ok).toBe(false)
+    expect(await statusOf(item.id)).toBe(ItemStatus.SOLD)
+  })
+
+  it('lets the seller move an item whose only order was cancelled', async () => {
+    const item = await makeItem({ status: ItemStatus.AVAILABLE })
+    await makeOrder([item.id], { status: OrderStatus.CANCELLED, holdExpiresAt: null })
+
+    expect((await setItemStatus(item.id, 'SOLD')).ok).toBe(true)
+    expect(await statusOf(item.id)).toBe(ItemStatus.SOLD)
+  })
+
+  it('will not publish a draft, which has to go through updateItem for its slug', async () => {
+    const item = await makeItem({ status: ItemStatus.DRAFT })
+
+    const result = await setItemStatus(item.id, 'AVAILABLE')
+    expect(result).toEqual({ ok: false, error: 'הפריט עדיין טיוטה. פרסמו אותו קודם.' })
+    expect(await statusOf(item.id)).toBe(ItemStatus.DRAFT)
+  })
+
+  it('reports a missing item rather than throwing', async () => {
+    expect(await setItemStatus('nope', 'SOLD')).toEqual({ ok: false, error: 'הפריט לא נמצא.' })
   })
 })

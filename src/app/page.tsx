@@ -1,3 +1,4 @@
+import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getPublicCategories } from '@/lib/items'
 import { getSettings } from '@/lib/settings'
@@ -17,7 +18,7 @@ export default async function Home({
   await releaseExpiredHolds()
 
   const params = parseGridParams(await searchParams)
-  const [settings, categories, items] = await Promise.all([
+  const [settings, categories, items, availableCount] = await Promise.all([
     getSettings(),
     getPublicCategories(),
     db.item.findMany({
@@ -25,9 +26,14 @@ export default async function Home({
       orderBy: itemsOrderBy(params),
       include: { category: true, photos: { orderBy: { position: 'asc' }, take: 1 } },
     }),
+    // The hero's count describes the shop, not the current filter. Counting the
+    // filtered list put "0 פריטים זמינים" at the top of a shop holding fifty of
+    // them, directly above a panel inviting the buyer to widen their filter.
+    // Same predicate the filtered version used — everything the grid can show
+    // that isn't already sold — just without the filter applied.
+    db.item.count({ where: { status: { notIn: [ItemStatus.DRAFT, ItemStatus.SOLD] } } }),
   ])
 
-  const availableCount = items.filter((item) => item.status !== 'SOLD').length
   const filtered = params.category !== undefined || params.maxPrice !== undefined
 
   return (

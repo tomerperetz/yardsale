@@ -49,11 +49,13 @@ function pickupDetails(order: OrderForMessage, settings: SettingsForMessage): st
   const parts = [`בתאריך ${pickupDateFormatter.format(order.pickupDate)}`]
 
   const slot = slotLabel(order.pickupSlot, settings)
-  // U+2066/U+2069 isolate the hour range. "09:00–12:00" is two LTR number runs
+  // U+2068/U+2069 isolate the hour range. "09:00–12:00" is two LTR number runs
   // around a neutral dash; dropped bare into this Hebrew sentence the bidi
   // algorithm reverses them and WhatsApp shows the buyer "12:00–09:00" — an end
   // time before its start. The marks are invisible and WhatsApp honours them.
-  if (slot) parts.push(`בשעות ⁦${slot}⁩`)
+  // FSI rather than LRI because this is a free-text Settings field: it isolates
+  // the run either way, and stays correct if a seller types Hebrew into it.
+  if (slot) parts.push(`בשעות ⁨${slot}⁩`)
 
   const address = [settings.addressLine, settings.city].filter(Boolean).join(', ')
   if (address) parts.push(`בכתובת ${address}`)

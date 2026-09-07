@@ -1,9 +1,10 @@
-import { ItemStatus, Prisma } from '@prisma/client'
+import { ItemStatus, OrderStatus, Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { parseShekelInput } from '@/lib/money'
 import { hebrewSlug, randomSuffix } from '@/lib/slug'
 import { deleteItemPhotos } from '@/lib/images'
 import { DRAFT_NAME } from '@/lib/admin/draft'
+import { SELLABLE_STATUSES, type SellableStatus } from '@/lib/admin/item-status'
 
 export type ItemInput = {
   name: string
@@ -151,6 +152,66 @@ export async function updateItem(id: string, input: ItemInput): Promise<ItemResu
  * committed, so a failed transaction never leaves the row pointing at
  * already-deleted files.
  */
+// Every seller-settable status is a real ItemStatus. The client-side edit
+// screen imports the list from the import-free module; this is what stops the
+// two definitions drifting apart without anyone noticing.
+const SELLABLE: readonly ItemStatus[] = SELLABLE_STATUSES
+
+/** An order that still has a claim on its items. Cancelled and expired ones do not. */
+const LIVE_ORDER_STATUSES = [OrderStatus.PENDING_PAYMENT, OrderStatus.CLAIMED_PAID, OrderStatus.PAID]
+
+/**
+ * Marks a published item sold by hand, or puts it back on sale.
+ *
+ * Two things it refuses, both for the same reason: an item a live order is
+ * counting on must not move underneath that order. A `RESERVED` item is mid
+ * hold, and an item on a `PAID` order was sold through the shop — flipping
+ * either by hand would leave the order describing something that is no longer
+ * true. Cancelled and expired orders have released their claim, so an item
+ * that only appears on those is the seller's to move again.
+ *
+ * The write re-asserts the status it read, so a hold or a confirmation landing
+ * between the check and the write loses nothing: the update matches no row and
+ * the seller is told to look again, rather than silently overwriting it.
+ */
+export async function setItemStatus(id: string, status: SellableStatus): Promise<ItemResult> {
+  if (!SELLABLE.includes(status)) return { ok: false, error: 'סטטוס לא חוקי.' }
+
+  return db.$transaction(async (tx) => {
+    const item = await tx.item.findUnique({
+      where: { id },
+      select: {
+        slug: true,
+        status: true,
+        orderItems: {
+          where: { order: { status: { in: LIVE_ORDER_STATUSES } } },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    })
+    if (!item) return { ok: false as const, error: 'הפריט לא נמצא.' }
+    if (item.status === status) return { ok: true as const, id, slug: item.slug }
+
+    if (item.status === ItemStatus.DRAFT) {
+      return { ok: false as const, error: 'הפריט עדיין טיוטה. פרסמו אותו קודם.' }
+    }
+    if (item.status === ItemStatus.RESERVED) {
+      return { ok: false as const, error: 'הפריט שמור להזמנה פעילה. בטלו את ההזמנה כדי לשחרר אותו.' }
+    }
+    if (item.orderItems.length > 0) {
+      return { ok: false as const, error: 'הפריט נמכר דרך האתר ושייך להזמנה. אי אפשר לשנות את הסטטוס שלו.' }
+    }
+
+    const moved = await tx.item.updateMany({ where: { id, status: item.status }, data: { status } })
+    if (moved.count === 0) {
+      return { ok: false as const, error: 'הסטטוס של הפריט השתנה בינתיים. רעננו את הדף ונסו שוב.' }
+    }
+
+    return { ok: true as const, id, slug: item.slug }
+  })
+}
+
 export async function deleteItem(id: string): Promise<DeleteResult> {
   const result = await db.$transaction(async (tx) => {
     const item = await tx.item.findUnique({

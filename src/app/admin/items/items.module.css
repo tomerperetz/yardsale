@@ -235,3 +235,11 @@
   font-weight: 600;
   margin: 0 0 16px;
 }
+
+/* The line under the status chips explaining what the seller just changed. */
+.statusNote {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}

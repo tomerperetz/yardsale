@@ -2,12 +2,18 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { updateItemAction, deleteItemAction } from '@/app/admin/items/actions'
+import { updateItemAction, deleteItemAction, setItemStatusAction } from '@/app/admin/items/actions'
+import { SELLABLE_STATUSES, type SellableStatus } from '@/lib/admin/item-status'
 import { PhotoDrop, type PhotoInfo } from '@/components/admin/PhotoDrop'
 import formStyles from '@/components/admin/admin.module.css'
 import styles from '../items.module.css'
 
 const NOT_DELETABLE = new Set(['RESERVED', 'SOLD'])
+
+const STATUS_LABEL: Record<SellableStatus, string> = {
+  AVAILABLE: 'זמין למכירה',
+  SOLD: 'נמכר',
+}
 
 type EditableItem = {
   id: string
@@ -32,7 +38,6 @@ type EditableItem = {
  */
 export function EditItemForm({ item, categories }: { item: EditableItem; categories: string[] }) {
   const router = useRouter()
-  const isDraft = item.status === 'DRAFT'
 
   const [name, setName] = useState(item.name)
   const [description, setDescription] = useState(item.description)
@@ -46,10 +51,18 @@ export function EditItemForm({ item, categories }: { item: EditableItem; categor
   const [error, setError] = useState<string | null>(null)
   const categoryInputRef = useRef<HTMLInputElement>(null)
 
+  // Status is the one field that moves on its own — an order can reserve or
+  // sell this item while the seller has the form open — so it is held in state
+  // and re-read from the server's answer rather than from the prop.
+  const [status, setStatus] = useState(item.status)
+  const [statusPending, setStatusPending] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const isDraft = status === 'DRAFT'
+
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const blocked = NOT_DELETABLE.has(item.status)
+  const blocked = NOT_DELETABLE.has(status)
 
   async function handleSave() {
     if (pending) return
@@ -71,6 +84,23 @@ export function EditItemForm({ item, categories }: { item: EditableItem; categor
       return
     }
     router.push('/admin/items')
+    router.refresh()
+  }
+
+  async function handleStatus(next: SellableStatus) {
+    if (statusPending || next === status) return
+    setStatusPending(true)
+    setStatusError(null)
+    const result = await setItemStatusAction(item.id, next)
+    setStatusPending(false)
+    if (!result.ok) {
+      setStatusError(result.error)
+      // The refusal usually means an order moved the item underneath us, so
+      // pull the real status back rather than leaving a stale chip lit.
+      router.refresh()
+      return
+    }
+    setStatus(next)
     router.refresh()
   }
 
@@ -197,6 +227,44 @@ export function EditItemForm({ item, categories }: { item: EditableItem; categor
               <input type="checkbox" checked={publishNow} onChange={(e) => setPublishNow(e.target.checked)} />
               פרסום הפריט עכשיו
             </label>
+          )}
+
+          {!isDraft && (
+            <div>
+              <span className="lbl">סטטוס</span>
+              {statusError && (
+                <div className={formStyles.errors}>
+                  <p>{statusError}</p>
+                </div>
+              )}
+              {status === 'RESERVED' ? (
+                <p className={styles.statusNote}>
+                  הפריט שמור להזמנה פעילה. הסטטוס שלו נקבע לפי ההזמנה — אפשר לשחרר אותו בביטול ההזמנה
+                  במסך ההזמנות.
+                </p>
+              ) : (
+                <>
+                  <div className={formStyles.cats}>
+                    {SELLABLE_STATUSES.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={s === status ? `${formStyles.cat} ${formStyles.on}` : formStyles.cat}
+                        disabled={statusPending}
+                        onClick={() => handleStatus(s)}
+                      >
+                        {STATUS_LABEL[s]}
+                      </button>
+                    ))}
+                  </div>
+                  <p className={styles.statusNote}>
+                    {status === 'SOLD'
+                      ? 'הפריט מסומן כנמכר ומוצג בחנות מעומעם. אפשר להחזיר אותו למכירה.'
+                      : 'נמכר למישהו שהגיע פיזית? סמנו כאן, והפריט יירד מהמכירה מיד.'}
+                  </p>
+                </>
+              )}
+            </div>
           )}
 
           <div className={formStyles.actions}>

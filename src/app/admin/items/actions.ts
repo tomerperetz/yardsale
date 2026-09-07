@@ -6,12 +6,14 @@ import { deletePhotoFiles } from '@/lib/images'
 import {
   createItem,
   openDraft,
+  setItemStatus,
   updateItem,
   deleteItem as deleteItemRecord,
   type ItemInput,
   type ItemResult,
   type DeleteResult,
 } from '@/lib/admin/items'
+import type { SellableStatus } from '@/lib/admin/item-status'
 
 /**
  * Thin 'use server' wrappers around src/lib/admin/items.ts — client
@@ -34,6 +36,16 @@ export async function openDraftAction(input: ItemInput): Promise<ItemResult> {
 export async function updateItemAction(id: string, input: ItemInput): Promise<ItemResult> {
   const result = await updateItem(id, input)
   if (result.ok) revalidatePath('/admin/items')
+  return result
+}
+
+/** Take an item off sale, put it back, or mark it sold in person — see `setItemStatus`. */
+export async function setItemStatusAction(id: string, status: SellableStatus): Promise<ItemResult> {
+  const result = await setItemStatus(id, status)
+  if (result.ok) {
+    revalidatePath('/admin/items')
+    revalidatePath('/')
+  }
   return result
 }
 
