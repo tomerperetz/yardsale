@@ -269,6 +269,25 @@ Bulk bar over the selected items:
 - **publish** the selection
 - **discard** the selection (deletes the items and their photos)
 
+### Discarding the batch, not just its items
+
+Selection-based discard is keyed by item, and that is not enough. Between
+`/api/import` writing photos and `clusterBatch` attaching them, a photo belongs
+to no item at all. If clustering hard-fails, or the seller closes the tab in
+that window, those rows and their files persist with nothing item-keyed able to
+reach them — a leak that grows with every abandoned import and that no screen
+can show.
+
+So the review screen also offers **discard the whole import**, backed by
+`discardBatch(batchId)`, which deletes the batch's items, the batch's photos
+whether or not they were ever attached, and their files. `@@index([importBatchId])`
+makes it a single indexed sweep.
+
+`importBatchId` is **provenance and is never cleared** once a photo is
+attached — it records which drop a photo arrived in. Anything meaning "not yet
+assigned to a product" must therefore say `itemId: null` explicitly rather than
+relying on the batch id alone.
+
 Publishing runs the existing `updateItem` path so validation is unchanged: an
 item with no price or no name is refused with the message it already has.
 
