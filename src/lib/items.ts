@@ -1,10 +1,10 @@
-import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
+import { publicItemWhere } from '@/lib/visibility'
 
-/** Sold items stay visible in this shop — see spec §7 — so only DRAFT is hidden. */
+/** Sold items stay visible in this shop — see spec §7; see `publicItemWhere` for what isn't. */
 export async function getPublicItem(slug: string) {
   return db.item.findFirst({
-    where: { slug, status: { not: ItemStatus.DRAFT } },
+    where: { slug, ...publicItemWhere },
     include: { category: true, photos: { orderBy: { position: 'asc' } } },
   })
 }
@@ -20,14 +20,14 @@ export async function getPublicItem(slug: string) {
  */
 export async function getPublicCategories() {
   return db.category.findMany({
-    where: { items: { some: { status: { not: ItemStatus.DRAFT } } } },
+    where: { items: { some: publicItemWhere } },
     orderBy: { name: 'asc' },
   })
 }
 
 export async function getPublicItemsByIds(ids: string[]) {
   return db.item.findMany({
-    where: { id: { in: ids }, status: { not: ItemStatus.DRAFT } },
+    where: { id: { in: ids }, ...publicItemWhere },
     include: { category: true, photos: { orderBy: { position: 'asc' }, take: 1 } },
   })
 }

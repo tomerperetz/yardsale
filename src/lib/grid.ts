@@ -1,4 +1,5 @@
-import { ItemStatus, type Prisma } from '@prisma/client'
+import { type Prisma } from '@prisma/client'
+import { publicItemWhere } from '@/lib/visibility'
 
 export type GridSort = 'new' | 'price-asc' | 'price-desc'
 export type GridParams = { category?: string; maxPrice?: number; sort: GridSort }
@@ -22,9 +23,9 @@ export function parseGridParams(sp: Record<string, string | string[] | undefined
   return params
 }
 
-/** Drafts are never public. Sold items stay in the grid, dimmed — see spec §7. */
+/** Drafts and hidden items are never public. Sold items stay in the grid, dimmed — see spec §7. */
 export function itemsWhere(p: GridParams): Prisma.ItemWhereInput {
-  const where: Prisma.ItemWhereInput = { status: { not: ItemStatus.DRAFT } }
+  const where: Prisma.ItemWhereInput = { ...publicItemWhere }
   if (p.category) where.category = { name: p.category }
   if (p.maxPrice !== undefined) where.priceAgorot = { lte: p.maxPrice }
   return where

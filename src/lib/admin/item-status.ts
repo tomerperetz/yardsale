@@ -7,10 +7,13 @@
  * the browser bundle. admin/items.ts asserts at compile time that every value
  * here is a real `ItemStatus`, so the two cannot drift.
  *
- * Why only these two: `RESERVED` belongs to the order flow, which owns that
- * transition in both directions, and `DRAFT` would let a republished item
- * recycle a URL buyers have already shared — see `setItemStatus`.
+ * The two that are missing are missing on purpose. `RESERVED` belongs to the
+ * order flow, which owns that transition in both directions. `DRAFT` is what
+ * `HIDDEN` exists to avoid: `updateItem` regenerates a draft's slug on every
+ * save, so unpublishing through DRAFT would let the next rename recycle a URL
+ * buyers have already shared. A HIDDEN item keeps its slug, so unhiding
+ * restores the link people already have.
  */
-export const SELLABLE_STATUSES = ['AVAILABLE', 'SOLD'] as const
+export const SELLABLE_STATUSES = ['AVAILABLE', 'HIDDEN', 'SOLD'] as const
 
 export type SellableStatus = (typeof SELLABLE_STATUSES)[number]

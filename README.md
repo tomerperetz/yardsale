@@ -132,6 +132,39 @@ set.** This isn't a UI nicety that a determined buyer could work around —
 you deploy and immediately try to check out as a test buyer before touching
 Settings, seeing the shop refuse the order is expected behaviour, not a bug.
 
+## The five states an item can be in
+
+Four of them the shop manages on its own; one is yours.
+
+| State | Buyer sees | How it gets there |
+| --- | --- | --- |
+| `DRAFT` (טיוטה) | nothing | the entry form's working row, before you publish |
+| `AVAILABLE` (זמין) | in the grid, buyable | you publish it |
+| `RESERVED` (שמור) | in the grid, held | a buyer checked out; a 15-minute hold is running |
+| `SOLD` (נמכר) | in the grid, dimmed | you confirmed payment — or marked it sold by hand |
+| `HIDDEN` (מוסתר) | nothing | **you** took it off the shop |
+
+**Hidden** is the one to know about. Edit any published item and you get three
+buttons — זמין למכירה / מוסתר / נמכר. Hiding pulls the item from the grid and
+makes its URL 404, but keeps the row, its photos and, crucially, **its slug**.
+Unhide it and the link anyone already shared into WhatsApp works again. That is
+the whole reason hidden is its own state rather than a trip back through draft:
+a draft's slug is regenerated whenever you rename it, so unpublishing that way
+would quietly recycle a URL people already have.
+
+Two changes the seller cannot make by hand, both so an item never moves out
+from under an order counting on it:
+
+- An item a **live order** is holding (`RESERVED`) shows an explanation instead
+  of buttons. Cancel the order in the orders screen to release it.
+- An item **sold through a paid order** cannot be reopened. Orders that were
+  cancelled or expired have released their claim, so items that only appear on
+  those are yours to move again.
+
+Marking sold by hand is for the neighbour who turns up and pays cash. Hiding is
+for "not today". Deleting is still there for removing an item outright, and is
+refused for anything attached to an order.
+
 ## A note on photos and HEIC
 
 iPhones shoot photos in HEIC by default, and the image processing this

@@ -59,6 +59,18 @@ describe('reserveItems', () => {
     expect(await db.order.count()).toBe(0)
   })
 
+  it('will not sell an item the seller has hidden, even with its id in hand', async () => {
+    // The buyer's own storefront never offers a hidden item, but a stale cart
+    // or an old checkout link still carries the id.
+    const hidden = await makeItem({ status: ItemStatus.HIDDEN })
+
+    const r = await reserveItems({ ...base, itemIds: [hidden.id] }, NOW)
+
+    expect(r).toEqual({ ok: false, reason: 'UNAVAILABLE', unavailableItemIds: [hidden.id] })
+    expect((await db.item.findUniqueOrThrow({ where: { id: hidden.id } })).status).toBe(ItemStatus.HIDDEN)
+    expect(await db.order.count()).toBe(0)
+  })
+
   it('treats a sold item as unavailable', async () => {
     const sold = await makeItem({ status: ItemStatus.SOLD })
     const r = await reserveItems({ ...base, itemIds: [sold.id] }, NOW)

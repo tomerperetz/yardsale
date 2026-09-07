@@ -1,6 +1,7 @@
 import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getPublicCategories } from '@/lib/items'
+import { NOT_PUBLIC_STATUSES } from '@/lib/visibility'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { itemsOrderBy, itemsWhere, parseGridParams } from '@/lib/grid'
@@ -31,7 +32,7 @@ export default async function Home({
     // them, directly above a panel inviting the buyer to widen their filter.
     // Same predicate the filtered version used — everything the grid can show
     // that isn't already sold — just without the filter applied.
-    db.item.count({ where: { status: { notIn: [ItemStatus.DRAFT, ItemStatus.SOLD] } } }),
+    db.item.count({ where: { status: { notIn: [...NOT_PUBLIC_STATUSES, ItemStatus.SOLD] } } }),
   ])
 
   const filtered = params.category !== undefined || params.maxPrice !== undefined

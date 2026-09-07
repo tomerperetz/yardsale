@@ -18,12 +18,14 @@ const STATUS_LABEL: Record<string, string> = {
   RESERVED: 'שמור',
   SOLD: 'נמכר',
   DRAFT: 'טיוטה',
+  HIDDEN: 'מוסתר',
 }
 const STATUS_CLASS: Record<string, string> = {
   AVAILABLE: 'ok',
   RESERVED: 'hold',
   SOLD: 'sold',
   DRAFT: 'draft',
+  HIDDEN: 'hidden',
 }
 
 function toDateInput(d: Date): string {

@@ -161,7 +161,10 @@ const SELLABLE: readonly ItemStatus[] = SELLABLE_STATUSES
 const LIVE_ORDER_STATUSES = [OrderStatus.PENDING_PAYMENT, OrderStatus.CLAIMED_PAID, OrderStatus.PAID]
 
 /**
- * Marks a published item sold by hand, or puts it back on sale.
+ * Moves a published item between the three states its seller controls: on the
+ * shop, sold by hand to someone who turned up, or hidden — off the shop but
+ * still in the seller's list, keeping its slug so unhiding restores the link
+ * buyers already have.
  *
  * Two things it refuses, both for the same reason: an item a live order is
  * counting on must not move underneath that order. A `RESERVED` item is mid

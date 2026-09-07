@@ -12,7 +12,15 @@ const NOT_DELETABLE = new Set(['RESERVED', 'SOLD'])
 
 const STATUS_LABEL: Record<SellableStatus, string> = {
   AVAILABLE: 'זמין למכירה',
+  HIDDEN: 'מוסתר',
   SOLD: 'נמכר',
+}
+
+/** What the seller has just done, said back to them in the state they are now in. */
+const STATUS_NOTE: Record<SellableStatus, string> = {
+  AVAILABLE: 'הפריט מוצג בחנות. אפשר להסתיר אותו זמנית או לסמן שנמכר.',
+  HIDDEN: 'הפריט ירד מהחנות ונשמר אצלכם. הקישור אליו לא עובד כרגע, ויחזור לעבוד כשתחזירו אותו למכירה.',
+  SOLD: 'הפריט מסומן כנמכר ומוצג בחנות מעומעם. אפשר להחזיר אותו למכירה.',
 }
 
 type EditableItem = {
@@ -257,11 +265,7 @@ export function EditItemForm({ item, categories }: { item: EditableItem; categor
                       </button>
                     ))}
                   </div>
-                  <p className={styles.statusNote}>
-                    {status === 'SOLD'
-                      ? 'הפריט מסומן כנמכר ומוצג בחנות מעומעם. אפשר להחזיר אותו למכירה.'
-                      : 'נמכר למישהו שהגיע פיזית? סמנו כאן, והפריט יירד מהמכירה מיד.'}
-                  </p>
+                  <p className={styles.statusNote}>{STATUS_NOTE[status as SellableStatus]}</p>
                 </>
               )}
             </div>

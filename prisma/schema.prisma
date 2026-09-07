@@ -95,10 +95,11 @@ model Settings {
 }
 
 enum ItemStatus {
-  DRAFT
+  DRAFT // never published; the entry form's working row
   AVAILABLE
   RESERVED
   SOLD
+  HIDDEN // published once, taken off the shop by the seller; keeps its slug
 }
 
 enum OrderStatus {

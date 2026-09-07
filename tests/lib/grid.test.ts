@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { ItemStatus } from '@prisma/client'
 import { parseGridParams, itemsWhere, itemsOrderBy, filterHref } from '@/lib/grid'
+import { NOT_PUBLIC_STATUSES } from '@/lib/visibility'
 
 describe('parseGridParams', () => {
   it('defaults to newest first with no filters', () => {
@@ -22,13 +23,20 @@ describe('parseGridParams', () => {
 })
 
 describe('itemsWhere', () => {
-  it('always hides drafts', () => {
-    expect(itemsWhere({ sort: 'new' })).toEqual({ status: { not: ItemStatus.DRAFT } })
+  it('always hides drafts and items the seller has hidden', () => {
+    expect(itemsWhere({ sort: 'new' })).toEqual({
+      status: { notIn: [ItemStatus.DRAFT, ItemStatus.HIDDEN] },
+    })
   })
 
   it('keeps sold items visible', () => {
     const where = itemsWhere({ sort: 'new' })
     expect(JSON.stringify(where)).not.toContain(ItemStatus.SOLD)
+  })
+
+  it('hides every status the shared visibility rule names, so the two cannot drift', () => {
+    const excluded = itemsWhere({ sort: 'new' }).status
+    expect(excluded).toEqual({ notIn: [...NOT_PUBLIC_STATUSES] })
   })
 
   it('filters by category name', () => {

@@ -154,6 +154,12 @@
   color: var(--ink-3);
   border: 1px dashed var(--line);
 }
+/* Hidden reads as deliberately set aside — a solid, muted slate, distinct
+   from draft's dashed "not finished yet" and from sold's warm grey. */
+.pill.hidden {
+  background: #e8ebef;
+  color: #4a5462;
+}
 
 .rowbtn {
   border: 1px solid var(--line);

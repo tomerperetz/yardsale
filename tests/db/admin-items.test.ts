@@ -243,4 +243,41 @@ describe('setItemStatus', () => {
   it('reports a missing item rather than throwing', async () => {
     expect(await setItemStatus('nope', 'SOLD')).toEqual({ ok: false, error: 'הפריט לא נמצא.' })
   })
+
+  it('hides an available item and puts it back, keeping the slug both ways', async () => {
+    const item = await makeItem({ status: ItemStatus.AVAILABLE })
+
+    expect((await setItemStatus(item.id, 'HIDDEN')).ok).toBe(true)
+    expect(await statusOf(item.id)).toBe(ItemStatus.HIDDEN)
+
+    expect((await setItemStatus(item.id, 'AVAILABLE')).ok).toBe(true)
+    const after = await db.item.findUniqueOrThrow({ where: { id: item.id } })
+    expect(after.status).toBe(ItemStatus.AVAILABLE)
+    // The whole reason HIDDEN exists rather than reusing DRAFT: a link someone
+    // shared into WhatsApp still points at this item after it comes back.
+    expect(after.slug).toBe(item.slug)
+  })
+
+  it('refuses to hide an item a live order is holding', async () => {
+    const item = await makeItem({ status: ItemStatus.RESERVED })
+    await makeOrder([item.id])
+
+    expect((await setItemStatus(item.id, 'HIDDEN')).ok).toBe(false)
+    expect(await statusOf(item.id)).toBe(ItemStatus.RESERVED)
+  })
+
+  it('refuses to hide an item that was sold through a paid order', async () => {
+    const item = await makeItem({ status: ItemStatus.SOLD })
+    await makeOrder([item.id], { status: OrderStatus.PAID, holdExpiresAt: null })
+
+    expect((await setItemStatus(item.id, 'HIDDEN')).ok).toBe(false)
+    expect(await statusOf(item.id)).toBe(ItemStatus.SOLD)
+  })
+
+  it('lets a hidden item be marked sold without passing back through the shop', async () => {
+    const item = await makeItem({ status: ItemStatus.HIDDEN })
+
+    expect((await setItemStatus(item.id, 'SOLD')).ok).toBe(true)
+    expect(await statusOf(item.id)).toBe(ItemStatus.SOLD)
+  })
 })

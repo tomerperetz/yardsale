@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import {
   seedShop,
   makeAvailableItem,
+  makeAvailableItemWithHebrewSlug,
   makeClaimedOrder,
   reserveOutOfBand,
   cleanupItems,
@@ -107,6 +108,45 @@ test.describe('admin', () => {
 
       await page.goto('/')
       await expect(page.locator('article.card', { hasText: item.name })).not.toHaveClass(/sold/)
+    } finally {
+      await context.close()
+      await cleanupItems([item.id])
+    }
+  })
+
+  test('hiding an item pulls it from the shop, and unhiding restores the same URL', async ({ browser }) => {
+    const item = await makeAvailableItemWithHebrewSlug({ name: 'שידת מגירות', price: 44000, category: 'ריהוט' })
+
+    const context = await browser.newContext({ locale: 'he-IL' })
+    try {
+      await addAdminSession(context)
+      const page = await context.newPage()
+
+      // The link a buyer would already have shared.
+      const itemUrl = `/item/${item.slug}`
+      await page.goto(itemUrl)
+      await expect(page.getByRole('heading', { name: item.name })).toBeVisible()
+
+      await page.goto(`/admin/items/${item.id}`)
+      await page.getByRole('button', { name: 'מוסתר', exact: true }).click()
+      await expect(page.getByText('הפריט ירד מהחנות')).toBeVisible()
+
+      // Gone from the grid, and the shared link no longer resolves.
+      await page.goto('/')
+      await expect(page.locator('article.card', { hasText: item.name })).toHaveCount(0)
+      const hiddenResponse = await page.goto(itemUrl)
+      expect(hiddenResponse?.status()).toBe(404)
+
+      await page.goto(`/admin/items/${item.id}`)
+      await page.getByRole('button', { name: 'זמין למכירה', exact: true }).click()
+
+      // Back in the grid, and — the point of HIDDEN over DRAFT — at the very
+      // same URL, so the link people already shared works again.
+      await page.goto('/')
+      await expect(page.locator('article.card', { hasText: item.name })).toHaveCount(1)
+      const backResponse = await page.goto(itemUrl)
+      expect(backResponse?.status()).toBe(200)
+      await expect(page.getByRole('heading', { name: item.name })).toBeVisible()
     } finally {
       await context.close()
       await cleanupItems([item.id])

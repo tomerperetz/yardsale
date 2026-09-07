@@ -3,7 +3,9 @@ import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { resetDb } from '../helpers/db'
 import { makeCategory, makeItem } from '../helpers/factories'
-import { getPublicCategories, getPublicItem } from '@/lib/items'
+import { getPublicCategories, getPublicItem, getPublicItemsByIds } from '@/lib/items'
+import { setItemStatus } from '@/lib/admin/items'
+import { itemsWhere } from '@/lib/grid'
 
 describe('getPublicItem', () => {
   beforeEach(resetDb)
@@ -41,6 +43,50 @@ describe('getPublicItem', () => {
     })
     const found = await getPublicItem(item.slug)
     expect(found?.photos.map((p) => p.position)).toEqual([0, 1, 2])
+  })
+})
+
+describe('a hidden item is invisible to buyers everywhere', () => {
+  beforeEach(resetDb)
+
+  it('does not resolve by slug, so a shared link stops working while hidden', async () => {
+    const item = await makeItem({ status: ItemStatus.HIDDEN })
+    expect(await getPublicItem(item.slug)).toBeNull()
+  })
+
+  it('resolves again once it is back on sale, at the same slug', async () => {
+    const item = await makeItem({ status: ItemStatus.HIDDEN })
+    await setItemStatus(item.id, 'AVAILABLE')
+
+    const found = await getPublicItem(item.slug)
+    expect(found?.id).toBe(item.id)
+    expect(found?.slug).toBe(item.slug)
+  })
+
+  it('is dropped from a cart lookup rather than checked out', async () => {
+    const hidden = await makeItem({ status: ItemStatus.HIDDEN })
+    const visible = await makeItem({ status: ItemStatus.AVAILABLE })
+
+    const found = await getPublicItemsByIds([hidden.id, visible.id])
+    expect(found.map((i) => i.id)).toEqual([visible.id])
+  })
+
+  it('is excluded from the grid', async () => {
+    const hidden = await makeItem({ status: ItemStatus.HIDDEN })
+    const visible = await makeItem({ status: ItemStatus.AVAILABLE })
+
+    const shown = await db.item.findMany({ where: itemsWhere({ sort: 'new' }) })
+    expect(shown.map((i) => i.id)).toEqual([visible.id])
+    expect(shown.map((i) => i.id)).not.toContain(hidden.id)
+  })
+
+  it('takes its category out of the filter bar when it was the only item there', async () => {
+    const category = await makeCategory('כלי גינה')
+    const item = await makeItem({ categoryId: category.id, status: ItemStatus.AVAILABLE })
+
+    expect((await getPublicCategories()).map((c) => c.name)).toEqual(['כלי גינה'])
+    await setItemStatus(item.id, 'HIDDEN')
+    expect(await getPublicCategories()).toEqual([])
   })
 })
 
