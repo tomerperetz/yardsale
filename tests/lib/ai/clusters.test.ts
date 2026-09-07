@@ -171,4 +171,15 @@ describe('normalizeClusters', () => {
       expect({ raw, ok: accountsForEveryPhoto(result, ids) }).toEqual({ raw, ok: true })
     }
   })
+
+  it('backfills a hole in photoIds rather than dropping that slot', () => {
+    // `string[]` cannot express a sparse array and no .map()-shaped caller
+    // produces one, so this is out of contract by construction. It is here
+    // because the function's job is to hold when its input is not what the
+    // type claims: forEach skips holes, an indexed loop does not.
+    const sparse = ['a', , 'c'] as unknown as string[]
+    const result = normalizeClusters([[0]], sparse)
+    expect(result).toHaveLength(3)
+    expect(result?.[0]).toEqual(['a'])
+  })
 })

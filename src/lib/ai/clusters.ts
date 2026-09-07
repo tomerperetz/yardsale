@@ -50,9 +50,14 @@ export function normalizeClusters(raw: unknown, photoIds: string[]): string[][] 
     if (out.length > 0) groups.push(out)
   }
 
-  photoIds.forEach((id, index) => {
-    if (!seen.has(index)) groups.push([id])
-  })
+  // An indexed loop rather than forEach, which skips array holes. `string[]`
+  // does not model a sparse array and no caller building the list with .map()
+  // can produce one — but this function's whole job is to hold even when its
+  // input is not what the type claims, and a hole would otherwise be dropped
+  // instead of backfilled.
+  for (let index = 0; index < photoIds.length; index++) {
+    if (!seen.has(index)) groups.push([photoIds[index]])
+  }
 
   return groups
 }
