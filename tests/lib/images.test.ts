@@ -131,16 +131,20 @@ describe('deletePhotoFiles', () => {
  * server-action argument, so an id that is not a photo id must remove nothing.
  */
 describe('deletePhotoFiles refuses an id that is not a photo id', () => {
-  // The upload directory is nested one level inside the sandbox on purpose:
-  // if the guard ever regressed, '..' could then only reach a directory this
-  // test owns, never the real tmpdir(). The guard is what is under test; the
-  // nesting is so that testing it can never itself be destructive.
+  // The upload directory is nested well inside the sandbox on purpose: if the
+  // guard ever regressed, the ids below could then only climb into directories
+  // this test owns, never the real tmpdir(). The guard is what is under test;
+  // the nesting is so that testing it — which means removing the guard and
+  // re-running — can never itself be destructive.
+  //
+  // INVARIANT: keep this nested deeper than the most '..' any case below
+  // climbs. '../..' climbs two, so three levels is the minimum.
   let root: string
   let uploads: string
 
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'ys-guard-'))
-    uploads = path.join(root, 'uploads')
+    uploads = path.join(root, 'a', 'b', 'uploads')
     await mkdir(uploads, { recursive: true })
     process.env.UPLOAD_DIR = uploads
   })
@@ -149,14 +153,37 @@ describe('deletePhotoFiles refuses an id that is not a photo id', () => {
   it.each(['', '.', '..', '../..', 'a/b', 'PHOTO1', 'photo 1'])('refuses %o', async (badId) => {
     await storePhoto(await jpeg(), 'photoa')
     await storePhoto(await jpeg(), 'photob')
-    // Lives above the upload directory — what '..' would take with it.
-    const outside = path.join(root, 'outside.txt')
-    await writeFile(outside, 'must survive')
+
+    // One sentinel in every directory a case above can climb to, so that a
+    // recursive rm landing on any of them is caught rather than merely
+    // stepping over an empty parent.
+    const sentinels = [root, path.join(root, 'a'), path.join(root, 'a', 'b'), uploads].map((d) =>
+      path.join(d, 'must-survive.txt'),
+    )
+    for (const s of sentinels) await writeFile(s, 'must survive')
 
     await expect(deletePhotoFiles(badId)).resolves.toBeUndefined()
 
-    expect((await readdir(uploads)).sort()).toEqual(['photoa', 'photob'])
+    for (const s of sentinels) expect(existsSync(s)).toBe(true)
+    expect((await readdir(uploads)).sort()).toEqual(['must-survive.txt', 'photoa', 'photob'])
     expect((await readdir(photoDir('photoa'))).length).toBe(WIDTHS.length)
-    expect(existsSync(outside)).toBe(true)
+  })
+})
+
+describe('storePhoto refuses an id that is not a photo id', () => {
+  it.each(['', '.', '..', 'a/b', 'PHOTO-BAD', 'photo 1'])('rejects %o before touching the disk', async (badId) => {
+    // The guard is at the entry, before the mkdir, so nothing is created for
+    // an id that deletePhotoFiles would later refuse to clean up.
+    await expect(storePhoto(await jpeg(), badId)).rejects.toThrow(/not a photo id/)
+
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('leaves nothing behind when the id is bad and the image is undecodable too', async () => {
+    const truncated = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from('not a real png')])
+
+    await expect(storePhoto(truncated, 'PHOTO-BAD')).rejects.toThrow(/not a photo id/)
+
+    expect(await readdir(dir)).toEqual([])
   })
 })

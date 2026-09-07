@@ -43,6 +43,15 @@ export function photoDir(photoId: string): string {
 }
 
 export async function storePhoto(buf: Buffer, photoId: string) {
+  // Before any I/O, so that a rejected id leaves nothing at all behind — the
+  // mkdir below would otherwise create the directory and deletePhotoFiles,
+  // which guards the same ids, would then decline to remove it. Unlike
+  // deletePhotoFiles this may throw: it is not a cleanup path, and a caller
+  // that reached here with something that is not a photo id has a bug.
+  if (!PHOTO_ID_RE.test(photoId)) {
+    throw new Error(`refusing to store a photo under ${JSON.stringify(photoId)}: not a photo id`)
+  }
+
   const dir = photoDir(photoId)
   await mkdir(dir, { recursive: true })
 
