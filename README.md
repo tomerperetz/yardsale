@@ -241,14 +241,21 @@ To set the project up on Railway:
      3.
 5. Deploy.
 
-`next.config.js` backs this up with a fail-fast check: in production, it
-throws before the app starts if `DATABASE_URL`, `ADMIN_PASSWORD_HASH` or
-`SESSION_SECRET` is missing, rather than letting the app come up with (for
-example) no real password check on the admin area. In practice this check
-runs as part of `next build`, so on Railway it catches a missing variable
-during the build step of a deploy and fails that deploy outright, before any
-bad configuration goes live — which is the point of running it in
-`next.config.js` rather than only inside the routes that use those secrets.
+`src/instrumentation.ts` backs this up with a fail-fast check: on server
+startup in production it exits with a clear message if `DATABASE_URL`,
+`ADMIN_PASSWORD_HASH` or `SESSION_SECRET` is missing, rather than letting the
+app come up with (for example) no real password check on the admin area.
+
+That check deliberately does **not** live in `next.config.js`, where it
+started out and where it was wrong in both directions. `next build` loads that
+file, so a build failed for want of a database it never touches — this really
+happened, on the first Railway deploy. And the standalone server never loads
+it at all: `next build` inlines the resolved config into
+`.next/standalone/server.js` as a JSON literal, so the guard that existed to
+stop a badly-configured app from serving was not running when the app served.
+It only blocked builds. Next calls `register()` in `instrumentation.ts` once
+per server process and bundles it into the standalone output, which is the
+moment the check is actually about.
 
 After the first deploy, go through "First run" above: log into `/admin`, fill
 in Settings (the shop will not take orders until the BIT number is set), and
