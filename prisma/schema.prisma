@@ -8,37 +8,41 @@ datasource db {
 }
 
 model Item {
-  id          String      @id @default(cuid())
-  slug        String      @unique // see §7; Hebrew name, hyphenated, + 6-char suffix
-  name        String
-  description String
-  priceAgorot Int
-  categoryId  String
-  category    Category    @relation(fields: [categoryId], references: [id])
-  pickupFrom  DateTime    @db.Date
-  pickupTo    DateTime    @db.Date
-  status      ItemStatus  @default(DRAFT)
-  sortIndex   Int         @default(0)
-  photos      Photo[]
-  orderItems  OrderItem[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id            String      @id @default(cuid())
+  slug          String      @unique // see §7; Hebrew name, hyphenated, + 6-char suffix
+  name          String
+  description   String
+  priceAgorot   Int
+  categoryId    String
+  category      Category    @relation(fields: [categoryId], references: [id])
+  pickupFrom    DateTime    @db.Date
+  pickupTo      DateTime    @db.Date
+  status        ItemStatus  @default(DRAFT)
+  sortIndex     Int         @default(0)
+  importBatchId String? // the drop this item was created from; null for hand-made items
+  photos        Photo[]
+  orderItems    OrderItem[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@index([status, sortIndex])
   @@index([categoryId])
+  @@index([importBatchId])
 }
 
 model Photo {
-  id       String    @id @default(cuid())
-  itemId   String
-  item     Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  width    Int
-  height   Int
-  lqip     String // base64 data URI, ~20 bytes of blur
-  position Int       @default(0)
-  takenAt  DateTime? // EXIF DateTimeOriginal, used for bulk grouping
+  id            String    @id @default(cuid())
+  itemId        String? // nullable: an imported photo exists before its product does
+  item          Item?     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  importBatchId String? // groups one drop; null for photos added the old way
+  width         Int
+  height        Int
+  lqip          String // base64 data URI, ~20 bytes of blur
+  position      Int       @default(0)
+  takenAt       DateTime? // EXIF DateTimeOriginal, used for bulk grouping
 
   @@index([itemId, position])
+  @@index([importBatchId])
 }
 
 model Category {
