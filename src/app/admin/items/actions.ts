@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { deletePhotoFiles } from '@/lib/images'
 import {
   createItem,
+  openDraft,
   updateItem,
   deleteItem as deleteItemRecord,
   type ItemInput,
@@ -23,6 +24,11 @@ import {
 
 export async function createItemAction(input: ItemInput): Promise<ItemResult> {
   return createItem(input)
+}
+
+/** The entry form's own draft — see `openDraft`, which reuses an unused one. */
+export async function openDraftAction(input: ItemInput): Promise<ItemResult> {
+  return openDraft(input)
 }
 
 export async function updateItemAction(id: string, input: ItemInput): Promise<ItemResult> {

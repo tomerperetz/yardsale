@@ -3,7 +3,8 @@ import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { resetDb } from '../helpers/db'
 import { makeItem, makeOrder } from '../helpers/factories'
-import { createItem, updateItem, deleteItem, normalizeCategoryName } from '@/lib/admin/items'
+import { createItem, openDraft, updateItem, deleteItem, normalizeCategoryName } from '@/lib/admin/items'
+import { DRAFT_NAME } from '@/lib/admin/draft'
 
 const valid = {
   name: 'ספה תלת מושבית',
@@ -126,5 +127,52 @@ describe('updateItem slug behaviour', () => {
     if (!updated.ok) throw new Error('expected ok')
 
     expect(updated.slug).toBe(created.slug)
+  })
+})
+
+describe('openDraft', () => {
+  beforeEach(resetDb)
+
+  const blank = { ...valid, name: DRAFT_NAME, description: '', price: '0', publish: false }
+
+  it('reuses an untouched draft instead of leaving one behind per visit', async () => {
+    const first = await openDraft(blank)
+    const second = await openDraft(blank)
+    const third = await openDraft(blank)
+    if (!first.ok || !second.ok || !third.ok) throw new Error('expected ok')
+
+    expect(second.id).toBe(first.id)
+    expect(third.id).toBe(first.id)
+    expect(await db.item.count({ where: { status: ItemStatus.DRAFT } })).toBe(1)
+  })
+
+  it('leaves a draft alone once a photo has landed on it', async () => {
+    const first = await openDraft(blank)
+    if (!first.ok) throw new Error('expected ok')
+    await db.photo.create({ data: { itemId: first.id, width: 800, height: 600, lqip: 'x', position: 0 } })
+
+    const second = await openDraft(blank)
+    if (!second.ok) throw new Error('expected ok')
+    expect(second.id).not.toBe(first.id)
+    expect(await db.item.count({ where: { status: ItemStatus.DRAFT } })).toBe(2)
+  })
+
+  it('leaves a draft alone once the seller has named it', async () => {
+    const first = await openDraft(blank)
+    if (!first.ok) throw new Error('expected ok')
+    await updateItem(first.id, { ...valid, name: 'ספה שהתחלתי', publish: false })
+
+    const second = await openDraft(blank)
+    if (!second.ok) throw new Error('expected ok')
+    expect(second.id).not.toBe(first.id)
+  })
+
+  it('never reuses a published item that happens to carry the draft name', async () => {
+    const published = await createItem({ ...valid, name: DRAFT_NAME })
+    if (!published.ok) throw new Error('expected ok')
+
+    const draft = await openDraft(blank)
+    if (!draft.ok) throw new Error('expected ok')
+    expect(draft.id).not.toBe(published.id)
   })
 })

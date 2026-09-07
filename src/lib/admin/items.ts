@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { parseShekelInput } from '@/lib/money'
 import { hebrewSlug, randomSuffix } from '@/lib/slug'
 import { deleteItemPhotos } from '@/lib/images'
+import { DRAFT_NAME } from '@/lib/admin/draft'
 
 export type ItemInput = {
   name: string
@@ -82,6 +83,26 @@ export async function createItem(input: ItemInput): Promise<ItemResult> {
 
     return { ok: true as const, id: item.id, slug: item.slug }
   })
+}
+
+/**
+ * Hands the "new item" form the row its photo uploads target.
+ *
+ * Creating one per mount meant every load of /admin/items left a "פריט חדש"
+ * row behind — opening the orders tab and coming back was enough — and the
+ * seller's list filled with items they never made. An untouched draft is
+ * indistinguishable from a fresh one, so reuse it rather than add another.
+ * "Untouched" is deliberately narrow: once a photo lands on a draft, or the
+ * seller renames it, it is theirs and the next form gets its own row.
+ */
+export async function openDraft(input: ItemInput): Promise<ItemResult> {
+  const reusable = await db.item.findFirst({
+    where: { status: ItemStatus.DRAFT, name: DRAFT_NAME, photos: { none: {} } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, slug: true },
+  })
+  if (reusable) return { ok: true, id: reusable.id, slug: reusable.slug }
+  return createItem(input)
 }
 
 export async function updateItem(id: string, input: ItemInput): Promise<ItemResult> {

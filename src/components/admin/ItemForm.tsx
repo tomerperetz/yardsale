@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createItemAction, updateItemAction } from '@/app/admin/items/actions'
+import { openDraftAction, updateItemAction } from '@/app/admin/items/actions'
+import { DRAFT_NAME } from '@/lib/admin/draft'
 import { PhotoDrop, type PhotoInfo } from './PhotoDrop'
 import styles from './admin.module.css'
 
-const DRAFT_NAME = 'פריט חדש'
 const FALLBACK_CATEGORY = 'כללי'
 
 /**
@@ -48,7 +48,7 @@ export function ItemForm({
   useEffect(() => {
     if (draftId !== null) return
     let cancelled = false
-    createItemAction({
+    openDraftAction({
       name: DRAFT_NAME,
       description: '',
       price: '0',
