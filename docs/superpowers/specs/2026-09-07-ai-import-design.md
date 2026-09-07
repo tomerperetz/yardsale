@@ -277,9 +277,35 @@ item with no price or no name is refused with the message it already has.
 | Condition | Behaviour |
 | --- | --- |
 | `ANTHROPIC_API_KEY` unset | The bulk tab says the feature is off and falls back to today's EXIF grouping. No call attempted. |
+| **Credit or quota exhausted** | See below — treated as its own case, not a generic error. |
 | Clustering call fails or is invalid | Fall back to `groupByCaptureTime`, create items, skip captions, tell the seller copy was not generated. |
 | One caption call fails | That item gets an empty name and description. Other items unaffected. |
 | A photo has no group after validation | It becomes its own single-photo item. |
+
+### Running out of credit
+
+The account behind `ANTHROPIC_API_KEY` will eventually hit a spending limit or
+run dry, and it will do so without warning, mid-import. This must not look like
+a crash and must not cost the seller their upload.
+
+The API signals it distinctly — HTTP `400` with an `invalid_request_error`
+whose message names credit, or HTTP `429` for rate/quota. The client in
+`src/lib/ai/` classifies these into a single `OUT_OF_CREDIT` outcome, separate
+from network errors and malformed responses, and:
+
+1. The **photos are already uploaded and keep their batch** — nothing is lost.
+2. Clustering falls back to `groupByCaptureTime`, so the seller still gets
+   items and still reaches the review screen with every photo accounted for.
+3. Captions are skipped entirely rather than attempted per item — sixty
+   doomed calls in a row is the wrong way to discover a dead key.
+4. The review screen shows one plain Hebrew message saying automatic naming is
+   unavailable because the AI account has no credit, and that everything else
+   works normally.
+5. Nothing retries automatically.
+
+Once a batch has seen `OUT_OF_CREDIT`, no further calls are made for that
+batch. This is a per-batch latch, not a global one — a topped-up key works on
+the next import with no restart.
 
 The shop must never be blocked by this feature. Nothing here runs on a
 buyer-facing path.
@@ -351,6 +377,32 @@ Caption prompt requirements (binding):
 **Contract**
 - one test that the AI client sends images and parses a well-formed response.
   Everything else mocks `src/lib/ai/`.
+- `OUT_OF_CREDIT` classification, driven from recorded error shapes: a 400
+  `invalid_request_error` naming credit, and a 429. Both must produce the
+  latched fallback of §7.4, not a generic failure.
+
+**Prompt quality, without spending API credit**
+
+The two prompts are the part most likely to be quietly bad — a clustering
+prompt that splits one sofa across two groups, or a caption prompt that writes
+stilted Hebrew or states things it cannot see. Neither is caught by a mocked
+test, because the mock returns whatever the test author expected.
+
+So the prompts are exercised against a **subagent standing in for the API**:
+the exact system and user prompt the client would send, with real photographs,
+answered by a model rather than a fixture. What that run is checking:
+
+- clustering: does one object's photos come back as one group, and do two
+  similar objects stay apart
+- captions: is the Hebrew natural, is the headline a noun phrase rather than
+  marketing copy, does the description mention visible flaws, and does the
+  category come back verbatim from the supplied set
+- does the response satisfy §8's validator without special pleading
+
+Findings feed back into the prompt text. The fixtures recorded from these runs
+then become the mocked responses used by the automated tests, so the suite is
+checking behaviour against output a model actually produced rather than output
+we imagined it would produce.
 
 **Regression**
 - the existing suite must stay green through the storage change. The photo URL
