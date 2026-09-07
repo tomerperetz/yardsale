@@ -43,10 +43,27 @@ function slotHoursFor(slot: PickupSlot, settings: { slotMorning: string; slotAft
   }
 }
 
-/** "אחה״צ" alone, or "אחה״צ · 12:00–17:00" once the seller has configured that slot's hours. */
-function slotDisplay(slot: PickupSlot, settings: { slotMorning: string; slotAfternoon: string; slotEvening: string }): string {
+/**
+ * "אחה״צ" alone, or "אחה״צ · 12:00–17:00" once the seller has configured that
+ * slot's hours. The hours carry `dir="ltr"` for the same reason
+ * `src/components/Range.tsx` exists: two LTR number runs around a neutral dash
+ * are reordered by the bidi algorithm in this RTL page, and the buyer would be
+ * told to collect between 17:00 and 12:00.
+ */
+function SlotDisplay({
+  slot,
+  settings,
+}: {
+  slot: PickupSlot
+  settings: { slotMorning: string; slotAfternoon: string; slotEvening: string }
+}) {
   const hours = slotHoursFor(slot, settings).trim()
-  return hours === '' ? SLOT_LABEL[slot] : `${SLOT_LABEL[slot]} · ${hours}`
+  if (hours === '') return <>{SLOT_LABEL[slot]}</>
+  return (
+    <>
+      {SLOT_LABEL[slot]} · <span dir="ltr">{hours}</span>
+    </>
+  )
 }
 
 /**
@@ -106,7 +123,7 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
             <div className="fact">
               <i>◷</i>
               <span>
-                איסוף ב<b><PickupWindow from={order.pickupDate} to={order.pickupDate} /></b> · {slotDisplay(order.pickupSlot, settings)}
+                איסוף ב<b><PickupWindow from={order.pickupDate} to={order.pickupDate} /></b> · <SlotDisplay slot={order.pickupSlot} settings={settings} />
               </span>
             </div>
             {address !== '' && (

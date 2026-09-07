@@ -30,6 +30,14 @@ describe('messageForOrder', () => {
     expect(msg).toContain('12:00–17:00')
   })
 
+  it('isolates the hour range so WhatsApp cannot reverse it', () => {
+    // Bare in a Hebrew sentence, "12:00–17:00" is two LTR runs around a neutral
+    // dash and the bidi algorithm lays them out right-to-left — the buyer reads
+    // an end time before its start. U+2066/U+2069 pin the order.
+    const msg = messageForOrder({ ...order, status: OrderStatus.PAID }, settings)
+    expect(msg).toContain('⁦12:00–17:00⁩')
+  })
+
   it('chases payment while the order is still pending', () => {
     const msg = messageForOrder({ ...order, status: OrderStatus.PENDING_PAYMENT }, settings)
     expect(msg).toContain('YS-4821')

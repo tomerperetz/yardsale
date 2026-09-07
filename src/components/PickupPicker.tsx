@@ -113,7 +113,16 @@ export function PickupPicker({
                   buyer chooses rather than only afterwards on /o/[token]. Substring
                   matching means the bare label (`אחה״צ`) still selects this button;
                   see accessible-names.md for why the day chips can't share that luxury. */}
-              {hours !== '' && <small>{hours}</small>}
+              {/* dir="ltr" is load-bearing, not cosmetic: "09:00–12:00" is two
+                  LTR number runs around a neutral dash, so the bidi algorithm
+                  lays them out right-to-left in this RTL page and the morning
+                  slot renders as "12:00–09:00" — an end time before its start.
+                  Same reason src/components/Range.tsx exists for date ranges. */}
+              {hours !== '' && (
+                <small dir="ltr" className="hours">
+                  {hours}
+                </small>
+              )}
             </button>
           )
         })}
