@@ -367,6 +367,14 @@ Served by a route handler at `/img/<itemId>/<photoId>-<width>.webp` with
 `Cache-Control: public, max-age=31536000, immutable` — safe because a `photoId` is never
 reused for different content.
 
+> **Superseded.** `2026-09-07-ai-import-design.md` §6 re-keys photo storage by
+> photo: `/img/<photoId>/<width>.webp` on the wire and
+> `<UPLOAD_DIR>/<photoId>/<width>.webp` on disk. A photo can then exist before
+> it belongs to any item, and moving one between items is a single `UPDATE`
+> with no file I/O. The cache-header reasoning above is unchanged and still
+> applies. This paragraph is left as written because it records what shipped on
+> 2026-09-06.
+
 Limits: 12 MB per file, 10 photos per item, `image/jpeg|png|webp|heic` only, verified by
 sniffing the file's magic bytes rather than trusting the declared MIME type. Deleting an
 item deletes its directory.
