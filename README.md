@@ -93,6 +93,13 @@ unescaped, exactly as `admin:password` printed it.
 Set `SESSION_SECRET` to any long random string, e.g. `openssl rand -base64
 32`, and leave `UPLOAD_DIR` as `./.uploads` for local development.
 
+`UPLOAD_DIR` is resolved against the working directory, and the standalone
+build's `server.js` changes it to `.next/standalone/` before it runs. So a
+relative path means one directory under `npm run dev` and a different one if
+you run the standalone server by hand locally — photos will 404 with nothing
+in the log. Use an absolute path if you do that. It never bites on Railway,
+where `UPLOAD_DIR` is the absolute `/data/uploads`.
+
 ### Running it
 
 ```bash
