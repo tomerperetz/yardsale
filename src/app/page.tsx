@@ -9,6 +9,20 @@ import { SiteHeader } from '@/components/SiteHeader'
 import { Filters } from '@/components/Filters'
 import { ItemCard } from '@/components/ItemCard'
 
+/**
+ * The shop is never prerendered. It lists live inventory, runs the expiry
+ * sweep, and reads Settings — none of which may be frozen at build time.
+ *
+ * `await searchParams` below would eventually mark this route dynamic on its
+ * own, but only *after* the prerender attempt has already run
+ * `releaseExpiredHolds()` against a database. That is fine locally, where one
+ * happens to be reachable; on Railway the build has no DATABASE_URL and the
+ * deploy failed outright while prerendering this page. Declaring it up front
+ * means the attempt never happens — the same reason the admin pages carry
+ * this export.
+ */
+export const dynamic = 'force-dynamic'
+
 export default async function Home({
   searchParams,
 }: {

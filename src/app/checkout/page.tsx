@@ -16,6 +16,9 @@ import { CheckoutForm } from '@/components/CheckoutForm'
  * is empty it names the two conflicting items instead of just failing, and
  * offers to check out without one of them — see `intersectPickupWindows`.
  */
+/** Never prerendered, for the same reason as the shop — see src/app/page.tsx. */
+export const dynamic = 'force-dynamic'
+
 export default async function CheckoutPage({
   searchParams,
 }: {
