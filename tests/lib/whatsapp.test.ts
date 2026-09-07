@@ -91,6 +91,14 @@ describe('messageForOrder', () => {
     expect(msg).not.toContain('15')
   })
 
+  it('says "דקה אחת" rather than "1 דקות" on the last minute', () => {
+    const now = new Date('2026-09-10T10:00:00Z')
+    const soon = { ...order, status: OrderStatus.PENDING_PAYMENT, holdExpiresAt: new Date('2026-09-10T10:00:40Z') }
+    const msg = messageForOrder(soon, settings, now)
+    expect(msg).toContain('נשארה לך דקה אחת')
+    expect(msg).not.toContain('1 דקות')
+  })
+
   it('makes no minute claim when the order carries no hold to report', () => {
     const msg = messageForOrder({ ...order, status: OrderStatus.PENDING_PAYMENT }, settings)
     expect(msg).not.toContain('דקות')

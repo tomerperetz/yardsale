@@ -84,7 +84,16 @@ export function messageForOrder(order: OrderForMessage, settings: SettingsForMes
       const sentences = [`היי ${order.buyerName}, ההזמנה שלך ${order.code}${shop} נשמרה וממתינה לתשלום בביט על סך ${formatAgorot(order.totalAgorot)}.`]
 
       const minutes = remainingHoldMinutes(order, now)
-      if (minutes !== null) sentences.push(`נשארו לך ${minutes} דקות להעברת התשלום.`)
+      if (minutes !== null) {
+        // "דקה" is feminine, so one minute takes a singular verb too — "נשארו
+        // לך 1 דקות" is the kind of thing a native reader notices immediately,
+        // and this message is sent precisely when the clock is nearly out.
+        sentences.push(
+          minutes === 1
+            ? 'נשארה לך דקה אחת להעברת התשלום.'
+            : `נשארו לך ${minutes} דקות להעברת התשלום.`,
+        )
+      }
 
       if (settings.bitPhone) sentences.push(`אפשר להעביר לביט למספר ${settings.bitPhone}.`)
 
