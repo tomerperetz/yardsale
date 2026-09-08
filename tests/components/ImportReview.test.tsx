@@ -85,7 +85,7 @@ afterEach(cleanup)
 beforeEach(() => {
   vi.clearAllMocks()
   bulkEdit.mockResolvedValue({ ok: true })
-  discardItems.mockResolvedValue({ ok: true })
+  discardItems.mockResolvedValue({ ok: true, discarded: 2, refused: [] })
   discardBatch.mockResolvedValue({ ok: true, items: 2, photos: 3 })
   removePhoto.mockResolvedValue({ ok: true })
   updateItemAction.mockResolvedValue({ ok: true, id: 'i2', slug: 'x' })
@@ -231,6 +231,30 @@ describe('the import review screen', () => {
 
     fireEvent.click(screen.getByText('כן, למחוק'))
     await waitFor(() => expect(discardItems).toHaveBeenCalledWith(['i1', 'i2']))
+  })
+
+  it('keeps a card the discard refused, and says why on it', async () => {
+    // Another tab published this one while this screen went on rendering its
+    // card. Removing it here because we asked would report נמחקו over an item
+    // that is still on the shop.
+    discardItems.mockResolvedValue({
+      ok: true,
+      discarded: 1,
+      refused: [{ id: 'i1', error: 'הפריט כבר פורסם ואינו חלק מהייבוא. אפשר לטפל בו מרשימת הפריטים.' }],
+    })
+    renderReview()
+
+    fireEvent.click(screen.getByText('מחיקה'))
+    fireEvent.click(screen.getByText('כן, למחוק'))
+
+    await waitFor(() =>
+      expect(screen.getByText('הפריט כבר פורסם ואינו חלק מהייבוא. אפשר לטפל בו מרשימת הפריטים.')).toBeTruthy(),
+    )
+    expect(screen.getByText('חלק מהפריטים לא נמחקו. ההסבר מופיע על הכרטיס של כל אחד מהם.')).toBeTruthy()
+
+    // The refused card is still here; the other one has gone.
+    expect(screen.getByDisplayValue('ספה תלת־מושבית')).toBeTruthy()
+    expect(screen.queryByDisplayValue('מנורת קריאה')).toBeNull()
   })
 
   it('discards the whole import, which is the only thing that reaches an unassigned photo', async () => {

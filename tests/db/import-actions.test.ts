@@ -302,6 +302,7 @@ const UNPRICED = 'צריך לקבוע מחיר לפני הפרסום. פריט �
 const HELD = 'הפריט שמור להזמנה פעילה. בטלו את ההזמנה כדי לשחרר אותו.'
 const ORDERED = 'הפריט נמכר דרך האתר ושייך להזמנה. אי אפשר לשנות את הסטטוס שלו.'
 const MARKED_SOLD = 'הפריט מסומן כנמכר. אפשר להחזיר אותו למכירה מדף הפריט.'
+const ALREADY_PUBLISHED = 'הפריט כבר פורסם ואינו חלק מהייבוא. אפשר לטפל בו מרשימת הפריטים.'
 
 describe('publishItems', () => {
   it('publishes the items it can and reports the ones it cannot', async () => {
@@ -429,19 +430,52 @@ describe('discardItems', () => {
     const photoA = await makePhoto({ itemId: a.id })
     const photoB = await makePhoto({ itemId: b.id })
 
-    expect(await discardItems([a.id, b.id])).toEqual({ ok: true })
+    expect(await discardItems([a.id, b.id])).toEqual({ ok: true, discarded: 2, refused: [] })
 
     expect(await db.item.count()).toBe(0)
     expect(await db.photo.count()).toBe(0)
     for (const id of [photoA.id, photoB.id]) expect(existsSync(photoDir(id))).toBe(false)
   })
 
-  it('leaves an item that belongs to an order alone', async () => {
+  it('refuses a published item in the selection and deletes the rest', async () => {
+    // The review page queries DRAFT only, but that is the UI keeping a
+    // promise, and two tabs on one batch break it: tab A publishes, tab B is
+    // still showing those cards, and select-all + מחיקה takes a live listing
+    // off the shop with its photos. The same argument the batch discard makes
+    // for not trusting the move menu.
+    const live = await makeDraft({ name: 'ספה', priceAgorot: 10000, status: ItemStatus.AVAILABLE })
+    const livePhoto = await makePhoto({ itemId: live.id })
+    const leftover = await makeDraft()
+    const leftoverPhoto = await makePhoto({ itemId: leftover.id })
+
+    const result = await discardItems([live.id, leftover.id])
+
+    expect(result.discarded).toBe(1)
+    expect(result.refused).toEqual([{ id: live.id, error: ALREADY_PUBLISHED }])
+
+    expect(await db.item.findUnique({ where: { id: live.id } })).not.toBeNull()
+    expect(existsSync(photoDir(livePhoto.id))).toBe(true)
+    expect(await db.item.findUnique({ where: { id: leftover.id } })).toBeNull()
+    expect(existsSync(photoDir(leftoverPhoto.id))).toBe(false)
+  })
+
+  it('leaves an item that belongs to an order alone, and says so', async () => {
     const sold = await makeDraft({ name: 'ספה', priceAgorot: 10000, status: ItemStatus.AVAILABLE })
     await makeOrder([sold.id], { status: OrderStatus.PAID })
 
-    expect(await discardItems([sold.id])).toEqual({ ok: true })
+    const result = await discardItems([sold.id])
+
+    expect(result.discarded).toBe(0)
+    expect(result.refused).toEqual([{ id: sold.id, error: ALREADY_PUBLISHED }])
     expect(await db.item.findUnique({ where: { id: sold.id } })).not.toBeNull()
+  })
+
+  it('reports an item that is not there rather than counting it deleted', async () => {
+    expect(await discardItems(['no-such-item'])).toEqual({
+      ok: true,
+      discarded: 0,
+      refused: [{ id: 'no-such-item', error: 'הפריט לא נמצא.' }],
+    })
   })
 })
 

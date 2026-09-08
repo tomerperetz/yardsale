@@ -37,6 +37,7 @@ import { carriedForward, clusterBatch, type ClusterBatchResult } from '@/lib/imp
 type MoveResult = { ok: true; itemId: string } | { ok: false; error: string }
 type EditResult = { ok: true } | { ok: false; error: string }
 type PublishResult = { ok: true; published: number; refused: { id: string; error: string }[] }
+type DiscardResult = { ok: true; discarded: number; refused: { id: string; error: string }[] }
 type DiscardBatchResult = { ok: true; items: number; photos: number }
 
 /** What the bulk bar can set across a selection — every field optional, each applied only if present. */
@@ -51,6 +52,14 @@ const ITEM_MISSING = 'הפריט לא נמצא.'
  * this says where to go rather than just refusing.
  */
 const MARKED_SOLD = 'הפריט מסומן כנמכר. אפשר להחזיר אותו למכירה מדף הפריט.'
+
+/**
+ * A selected item that is not leftover import. Says "handle it from the item
+ * list" rather than "delete it there", because that list will refuse a sold or
+ * ordered one too — this points somewhere real without promising what happens
+ * when the seller arrives.
+ */
+const ALREADY_PUBLISHED = 'הפריט כבר פורסם ואינו חלק מהייבוא. אפשר לטפל בו מרשימת הפריטים.'
 
 /**
  * What an item priced at 0 is told, and it has to be true in both directions.
@@ -319,24 +328,54 @@ export async function publishItems(itemIds: string[]): Promise<PublishResult> {
 }
 
 /**
- * Throws away the selected items with their photos and files.
+ * Throws away the selected items with their photos and files, and says which
+ * ones it would not.
  *
- * `deleteItem` does the work so the file cleanup keeps its one ordering rule —
- * the photo ids are read inside the transaction, before the rows naming them
- * go — and so the same refusals apply: an item a live or completed order is
- * counting on stays, because deleting it would orphan an OrderItem and corrupt
- * a buyer's history. That refusal is logged rather than returned; a discard
- * that skipped an item the seller had already sold is the safe outcome, and
- * this is called on drafts, where it cannot happen.
+ * Guarded by the same `deletable()` the batch discard uses, for the same
+ * reason and not because a caller is expected to get it wrong: the review page
+ * queries `status: DRAFT`, but that is the screen keeping a promise, and two
+ * tabs on one batch break it — tab A publishes a selection, tab B is still
+ * rendering those cards, and select-all plus discard takes a live listing off
+ * the shop with its photos. `deleteItem` alone would not stop it: it refuses
+ * RESERVED, SOLD and ordered items, and a freshly published item is none of
+ * those.
+ *
+ * `deleteItem` still does the work, so the file cleanup keeps its one ordering
+ * rule — the photo ids are read inside the transaction, before the rows naming
+ * them go — and its own refusal is passed through, for an order that lands
+ * between the check and the delete.
+ *
+ * The refusals are returned rather than only logged. Reporting נמחקו for items
+ * that are still there is how a seller learns to distrust the screen.
  */
-export async function discardItems(itemIds: string[]): Promise<{ ok: true }> {
+export async function discardItems(itemIds: string[]): Promise<DiscardResult> {
+  let discarded = 0
+  const refused: { id: string; error: string }[] = []
+
   for (const id of itemIds) {
+    const item = await db.item.findUnique({
+      where: { id },
+      select: {
+        status: true,
+        orderItems: { where: { order: { status: { in: LIVE_ORDER_STATUSES } } }, select: { id: true }, take: 1 },
+      },
+    })
+    if (!item) {
+      refused.push({ id, error: ITEM_MISSING })
+      continue
+    }
+    if (!deletable(item)) {
+      refused.push({ id, error: ALREADY_PUBLISHED })
+      continue
+    }
+
     const result = await deleteItem(id)
-    if (!result.ok) console.error('[import] discarding item', id, 'refused:', result.error)
+    if (result.ok) discarded += 1
+    else refused.push({ id, error: result.error })
   }
 
-  if (itemIds.length > 0) revalidatePath('/admin/items')
-  return { ok: true }
+  if (discarded > 0) revalidatePath('/admin/items')
+  return { ok: true, discarded, refused }
 }
 
 /**
@@ -401,7 +440,7 @@ export async function discardBatch(batchId: string): Promise<DiscardBatchResult>
       await tx.item.deleteMany({ where: { id: { in: [...doomed] } } })
 
       if (keptCount > 0) {
-        console.error('[import] discarding batch', batchId, 'kept', keptCount, 'item(s) an order is counting on')
+        console.log('[import] discarding batch', batchId, 'kept', keptCount, 'item(s) that are no longer drafts')
       }
 
       return { items: doomed.size, photoIds }

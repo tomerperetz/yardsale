@@ -109,6 +109,12 @@ async function migratePhoto(photoId: string, itemId: string, cleanup: boolean): 
       // Nothing left in the old layout. A destination means this width is done
       // — which is what makes either pass a no-op the second time; no
       // destination means the files are simply gone, and the caller reports it.
+      //
+      // Existence is all this branch can check, and the summary is worded to
+      // match ("a file at every width"): with the original gone there is
+      // nothing left to compare a size against, so a destination truncated by
+      // some earlier accident reads the same as a good one. The size check
+      // below is the real one, and it runs wherever an original survives.
       if (destStat) outcome.already += 1
       else outcome.missing += 1
       continue
@@ -197,7 +203,7 @@ async function main() {
   console.log(`upload dir: ${uploadDir()}`)
   console.log(`pass: ${cleanup ? 'cleanup — removing originals' : 'copy — removing nothing'}`)
   console.log(`photos in the database: ${photos.length}`)
-  console.log(`  photos with every width on disk: ${intact}`)
+  console.log(`  photos with a file at every width: ${intact}`)
   if (cleanup) {
     console.log(`  originals removed this run: ${removedFiles}`)
     console.log(`  originals already gone: ${alreadyFiles}`)
@@ -222,9 +228,9 @@ async function main() {
   }
 
   if (uncopied.length === 0 && incomplete.length === 0 && untouched.length === 0) {
-    if (cleanup) console.log('\nevery photo row has all its widths, in the new layout alone.')
+    if (cleanup) console.log('\nevery photo row has a file at every width, in the new layout alone.')
     else {
-      console.log('\nevery photo row has all its widths, in both layouts.')
+      console.log('\nevery photo row has a file at every width, in both layouts.')
       console.log('deploy, check that photos render, then reclaim the space:')
       console.log('  npm run migrate:photos -- --cleanup')
     }

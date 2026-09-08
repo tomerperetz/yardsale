@@ -362,8 +362,12 @@ every item, and the seller sees them on every admin screen, until the
 migration is run. There is no error anywhere to notice; there are only broken
 pictures.
 
-Run it in two passes, from a shell attached to the service (`railway run`, or
-the service shell) so `UPLOAD_DIR` and `DATABASE_URL` are the real ones:
+Run both passes **on the service**, from its shell (`railway ssh`, or the
+service shell in Railway's dashboard), so `UPLOAD_DIR` points at the volume
+holding the photos. Not `railway run`: that runs the command on your own
+machine with the service's variables injected, so `UPLOAD_DIR` would resolve to
+`/data/uploads` on your laptop and every photo would be reported as having no
+files. It destroys nothing and fails loudly, but it tells you nothing true.
 
 1. **Before deploying**, with the old version still serving:
    ```bash

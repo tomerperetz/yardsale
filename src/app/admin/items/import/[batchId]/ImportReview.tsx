@@ -279,18 +279,38 @@ export function ImportReview({
     })
   }
 
+  /**
+   * Discards the selection, and keeps whatever it would not.
+   *
+   * `discardItems` refuses an item that is no longer a draft — another tab may
+   * have published it while this one went on rendering its card — so the cards
+   * cannot all be removed on the strength of having asked. Saying נמחקו over
+   * items that are still there is how a seller learns to distrust the screen.
+   */
   async function handleDiscardSelection() {
     const doomed = selectedIds
     if (doomed.length === 0) return
     setConfirming(null)
+    setErrors([])
     await run(async () => {
-      await discardItems(doomed)
+      const result = await discardItems(doomed)
 
-      const gone = new Set(doomed)
+      const refusals: Record<string, string> = {}
+      for (const refusal of result.refused) refusals[refusal.id] = refusal.error
+
+      const gone = new Set(doomed.filter((id) => !(id in refusals)))
       setItems((prev) => prev.filter((item) => !gone.has(item.id)))
-      setSelected(new Set())
+      setSelected((prev) => {
+        const next = new Set(prev)
+        for (const id of gone) next.delete(id)
+        return next
+      })
       clearDirty(gone)
-      setFlash(doomed.length === 1 ? 'הפריט נמחק.' : 'הפריטים שנבחרו נמחקו.')
+      setItemErrors(refusals)
+      setFlash(gone.size === 0 ? null : gone.size === 1 ? 'הפריט נמחק.' : `נמחקו ${gone.size} פריטים.`)
+      if (result.refused.length > 0) {
+        setErrors(['חלק מהפריטים לא נמחקו. ההסבר מופיע על הכרטיס של כל אחד מהם.'])
+      }
     })
   }
 
