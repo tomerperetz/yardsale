@@ -516,6 +516,34 @@ describe('discardBatch', () => {
     expect(existsSync(photoDir(discardedPhoto.id))).toBe(false)
   })
 
+  it('leaves the items the seller already published, and their files', async () => {
+    // "מחיקת כל הייבוא" is offered for as long as one draft remains, right
+    // under a header counting how many items are already live. Sweeping those
+    // too would take twenty real listings off the shop, with their photos,
+    // while the screen was saying they were safe. Only a draft is leftover
+    // import; anything published has left the review and is a listing now.
+    const live = await makeDraft({ name: 'ספה', priceAgorot: 10000, status: ItemStatus.AVAILABLE })
+    const livePhoto = await makePhoto({ itemId: live.id })
+    const hidden = await makeDraft({ name: 'כיסא', priceAgorot: 8000, status: ItemStatus.HIDDEN })
+    const hiddenPhoto = await makePhoto({ itemId: hidden.id })
+    const leftover = await makeDraft()
+    const leftoverPhoto = await makePhoto({ itemId: leftover.id })
+
+    expect(await discardBatch(BATCH)).toEqual({ ok: true, items: 1, photos: 1 })
+
+    for (const [item, photo] of [
+      [live, livePhoto],
+      [hidden, hiddenPhoto],
+    ]) {
+      expect(await db.item.findUnique({ where: { id: item.id } })).not.toBeNull()
+      expect(await db.photo.findUnique({ where: { id: photo.id } })).not.toBeNull()
+      expect(existsSync(photoDir(photo.id))).toBe(true)
+    }
+
+    expect(await db.item.findUnique({ where: { id: leftover.id } })).toBeNull()
+    expect(existsSync(photoDir(leftoverPhoto.id))).toBe(false)
+  })
+
   it('leaves a batch photo that now belongs to an item outside the batch', async () => {
     // The sweep may only take a photo whose item is going with it. A photo
     // carries its batch id for life, so one moved onto an item from another

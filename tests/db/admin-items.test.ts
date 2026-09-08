@@ -7,7 +7,7 @@ import { ItemStatus, OrderStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { photoDir, photoFilename } from '@/lib/images'
 import { resetDb } from '../helpers/db'
-import { makeItem, makeOrder } from '../helpers/factories'
+import { makeCategory, makeItem, makeOrder } from '../helpers/factories'
 import {
   createItem,
   openDraft,
@@ -17,6 +17,7 @@ import {
   normalizeCategoryName,
 } from '@/lib/admin/items'
 import { DRAFT_NAME } from '@/lib/admin/draft'
+import { utcDate } from '@/lib/dates'
 
 const valid = {
   name: 'ספה תלת מושבית',
@@ -212,6 +213,35 @@ describe('openDraft', () => {
     if (!second.ok) throw new Error('expected ok')
     expect(second.id).not.toBe(first.id)
     expect(await db.item.count({ where: { status: ItemStatus.DRAFT } })).toBe(2)
+  })
+
+  it('never hands the manual form a draft that belongs to an import batch', async () => {
+    // An imported draft whose last photo the seller moved away is exactly the
+    // shape this query looks for — DRAFT, still named DRAFT_NAME, no photos —
+    // and the review screen invites that move on every card. Every degraded
+    // import path leaves items with DRAFT_NAME too. Reused here, the manual
+    // form would build a hand-typed listing on a batch row, which the batch
+    // discard then sweeps away with the rest of the import.
+    const imported = await db.item.create({
+      data: {
+        slug: 'imported-draft',
+        name: DRAFT_NAME,
+        description: '',
+        priceAgorot: 0,
+        categoryId: (await makeCategory()).id,
+        pickupFrom: utcDate(2026, 9, 12),
+        pickupTo: utcDate(2026, 9, 18),
+        status: ItemStatus.DRAFT,
+        importBatchId: 'some-batch',
+      },
+    })
+
+    const opened = await openDraft(blank)
+    if (!opened.ok) throw new Error('expected ok')
+
+    expect(opened.id).not.toBe(imported.id)
+    expect((await db.item.findUnique({ where: { id: opened.id } }))?.importBatchId).toBeNull()
+    expect(await db.item.findUnique({ where: { id: imported.id } })).not.toBeNull()
   })
 
   it('leaves a draft alone once the seller has named it', async () => {

@@ -309,7 +309,10 @@ To set the project up on Railway:
      (see above). Leaving it out is a supported configuration, not a broken
      one: the app boots, the shop works, and the bulk tab falls back to
      grouping photos by capture time.
-5. Deploy.
+5. Deploy. **If this service already has photos from a version before
+   the photo-storage change, do "Upgrading an instance that already has
+   photos" below first** — deploying without it leaves every photo on the
+   shop 404ing.
 
 `src/instrumentation.ts` backs this up with a fail-fast check: on server
 startup in production it exits with a clear message if `DATABASE_URL`,
@@ -333,6 +336,46 @@ upload items. From then on, every future deploy re-runs the migration and
 the seed automatically via `preDeployCommand` — the seed's `upsert` never
 touches an existing Settings row, so this is safe on every single deploy,
 including the very first one.
+
+### Upgrading an instance that already has photos
+
+Photo storage changed shape. Files used to live at
+`<UPLOAD_DIR>/<itemId>/<photoId>-<width>.webp` and now live at
+`<UPLOAD_DIR>/<photoId>/<width>.webp`, which is what lets a photo exist before
+it has an item (the import flow) and lets one move between items without
+touching disk. **Nothing does this move for you.** It is not a Prisma
+migration, so `preDeployCommand` does not run it, and a fresh service with no
+photos can skip this section entirely.
+
+If you deploy without it, **every photo on the shop 404s**. The `Photo` rows
+are intact and the app does not fail — buyers simply see a broken image on
+every item, and the seller sees them on every admin screen, until the
+migration is run. There is no error anywhere to notice; there are only broken
+pictures.
+
+Run it in two passes, from a shell attached to the service (`railway run`, or
+the service shell) so `UPLOAD_DIR` and `DATABASE_URL` are the real ones:
+
+1. **Before deploying**, with the old version still serving:
+   ```bash
+   npm run migrate:photos
+   ```
+   This pass only copies; it removes nothing. Both layouts end up on disk at
+   once, the running old version goes on serving from the old one, and no
+   photo is unreadable at any instant. It exits non-zero if any photo row is
+   missing files on disk, so read what it printed before moving on.
+2. **Deploy.** The new version reads the new layout, which is now populated.
+   Check that photos render on the shop before going further.
+3. **Afterwards**, reclaim the space:
+   ```bash
+   npm run migrate:photos -- --cleanup
+   ```
+   This removes an original only where the copy is in place and the same size,
+   and refuses — loudly, exiting non-zero — where it is not. Skipping this
+   pass costs disk space and nothing else, so there is no hurry: leave it
+   until the shop is confirmed working.
+
+Both passes are idempotent; running either one twice is a no-op.
 
 ## Testing
 

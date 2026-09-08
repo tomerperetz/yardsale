@@ -420,13 +420,24 @@ export async function discardBatch(batchId: string): Promise<DiscardBatchResult>
 }
 
 /**
- * Whether the batch discard may take this item — `deleteItem`'s rule, restated
- * because the sweep deletes in bulk rather than one row at a time. An item that
- * has since been sold or ordered is not part of the leak the discard is for,
- * and taking one would fail the whole sweep on a foreign key.
+ * Whether the batch discard may take this item: only if it is still a DRAFT.
+ *
+ * The discard means "throw away what is left of this import", and what is left
+ * of an import is its drafts. Anything published has left the review screen —
+ * it is a real listing, in /admin/items, in the shop, possibly already shared
+ * into a WhatsApp group — and the screen counts those in a badge over the very
+ * button that offers this. Sweeping by "not sold and not ordered" instead took
+ * every AVAILABLE and HIDDEN item the seller had published from this batch,
+ * with their photo files, while the header said they were safe. A seller who
+ * publishes twenty items and then tidies up the leftover drafts must not lose
+ * twenty live listings for it.
+ *
+ * The order check is redundant against DRAFT — an item cannot be ordered
+ * before it is published — and is kept anyway, because this is the branch that
+ * decides whether files are destroyed in bulk.
  */
 function deletable(item: { status: ItemStatus; orderItems: { id: string }[] }): boolean {
-  return item.status !== ItemStatus.RESERVED && item.status !== ItemStatus.SOLD && item.orderItems.length === 0
+  return item.status === ItemStatus.DRAFT && item.orderItems.length === 0
 }
 
 /**

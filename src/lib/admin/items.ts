@@ -119,10 +119,18 @@ export async function createItem(input: ItemInput): Promise<ItemResult> {
  * indistinguishable from a fresh one, so reuse it rather than add another.
  * "Untouched" is deliberately narrow: once a photo lands on a draft, or the
  * seller renames it, it is theirs and the next form gets its own row.
+ *
+ * `importBatchId: null` narrows it further, to drafts this form itself opened.
+ * An imported draft whose last photo the seller moved away is otherwise
+ * exactly the shape looked for here — DRAFT, still called DRAFT_NAME, no
+ * photos — and the review screen invites that move on every card; every
+ * degraded import path leaves its items named DRAFT_NAME too. Reusing one
+ * would build a hand-typed listing on a row that still belongs to a batch, and
+ * the batch discard would later throw it away with the rest of that import.
  */
 export async function openDraft(input: ItemInput): Promise<ItemResult> {
   const reusable = await db.item.findFirst({
-    where: { status: ItemStatus.DRAFT, name: DRAFT_NAME, photos: { none: {} } },
+    where: { status: ItemStatus.DRAFT, name: DRAFT_NAME, photos: { none: {} }, importBatchId: null },
     orderBy: { createdAt: 'desc' },
     select: { id: true, slug: true },
   })
