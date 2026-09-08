@@ -25,7 +25,14 @@ export function normalizeCategoryName(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ')
 }
 
-function parseDate(raw: string): Date | null {
+/**
+ * An `<input type="date">` value as the UTC-midnight Date the schema stores.
+ *
+ * Exported so the import screen's bulk edit validates a pickup window by the
+ * same rule as the single-item form, rather than growing a second parser that
+ * accepts a shape this one rejects.
+ */
+export function parseDate(raw: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null
   const d = new Date(`${raw}T00:00:00Z`)
   return Number.isNaN(d.getTime()) ? null : d
@@ -53,7 +60,14 @@ function validate(input: ItemInput): ValidateResult {
   return { name, categoryName, priceAgorot, from, to }
 }
 
-async function categoryId(tx: Prisma.TransactionClient, name: string): Promise<string> {
+/**
+ * The id of a category by name, creating it the first time it is used.
+ *
+ * Exported for the import screen's bulk edit, which sets one category across a
+ * selection and must mint a new one exactly as the item form does — same
+ * normalized name, same generated slug.
+ */
+export async function categoryId(tx: Prisma.TransactionClient, name: string): Promise<string> {
   const existing = await tx.category.findUnique({ where: { name } })
   if (existing) return existing.id
   const created = await tx.category.create({ data: { name, slug: hebrewSlug(name, randomSuffix()) } })
@@ -78,8 +92,18 @@ export async function createItem(input: ItemInput): Promise<ItemResult> {
       },
     })
 
+    // `itemId: null` is the whole point of the filter: it claims only photos
+    // that are not already on a product. Without it this is a steal — hand it
+    // an id belonging to another item and that item silently loses the photo,
+    // with no error and nothing in the seller's list explaining where it went.
+    // Harmless while a photo could only ever be attached once, on the way in
+    // from /api/upload; not harmless now that the import screen moves photos
+    // between items and an id can arrive here already spoken for.
     if (input.photoIds.length > 0) {
-      await tx.photo.updateMany({ where: { id: { in: input.photoIds } }, data: { itemId: item.id } })
+      await tx.photo.updateMany({
+        where: { id: { in: input.photoIds }, itemId: null },
+        data: { itemId: item.id },
+      })
     }
 
     return { ok: true as const, id: item.id, slug: item.slug }

@@ -43,8 +43,8 @@ const DAY_MS = 86_400_000
 const FALLBACK_CATEGORY = 'כללי'
 
 type BatchPhoto = { id: string; takenAt: Date | null }
-type CategoryRef = { id: string; name: string }
-type Defaults = { categoryId: string; pickupFrom: Date; pickupTo: Date; categories: CategoryRef[] }
+export type CategoryRef = { id: string; name: string }
+export type Defaults = { categoryId: string; pickupFrom: Date; pickupTo: Date; categories: CategoryRef[] }
 type NewItem = { id: string; photoIds: string[] }
 
 /** A grouping, plus whether the copy pass is allowed to run over it at all. */
@@ -296,8 +296,12 @@ async function captionOne(
  * computes for the entry form, so a seller who imports gets what a seller who
  * types would have got: the category and pickup window of their most recent
  * item.
+ *
+ * Exported for `movePhoto(photoId, 'new')` on the review screen, which mints a
+ * draft mid-review and must open it with the same defaults the batch's other
+ * items opened with rather than a second, drifting copy of this rule.
  */
-async function carriedForward(): Promise<Defaults> {
+export async function carriedForward(): Promise<Defaults> {
   const [last, categories] = await Promise.all([
     db.item.findFirst({
       orderBy: { createdAt: 'desc' },

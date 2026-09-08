@@ -1,0 +1,444 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { ItemStatus, OrderStatus } from '@prisma/client'
+
+// Every action here ends in revalidatePath, which needs the request context
+// Next only provides while serving. The database writes are what this file is
+// about, so stub the cache invalidation out.
+vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
+
+import { db } from '@/lib/db'
+import { photoDir, photoFilename } from '@/lib/images'
+import { utcDate } from '@/lib/dates'
+import { DRAFT_NAME } from '@/lib/admin/draft'
+import { resetDb } from '../helpers/db'
+import { makeCategory, makeOrder } from '../helpers/factories'
+import {
+  movePhoto,
+  removePhoto,
+  bulkEdit,
+  publishItems,
+  discardItems,
+  discardBatch,
+} from '@/app/admin/items/import/actions'
+
+const BATCH = 'batch-under-test'
+
+let uploads: string
+let previousUploadDir: string | undefined
+
+beforeEach(async () => {
+  await resetDb()
+  previousUploadDir = process.env.UPLOAD_DIR
+  uploads = await mkdtemp(path.join(tmpdir(), 'ys-import-actions-'))
+  process.env.UPLOAD_DIR = uploads
+})
+
+afterEach(async () => {
+  if (previousUploadDir === undefined) delete process.env.UPLOAD_DIR
+  else process.env.UPLOAD_DIR = previousUploadDir
+  await rm(uploads, { recursive: true, force: true })
+})
+
+let n = 0
+
+type DraftOverrides = {
+  categoryId?: string
+  name?: string
+  priceAgorot?: number
+  batchId?: string | null
+  status?: ItemStatus
+  from?: Date
+  to?: Date
+}
+
+/** A DRAFT item of the batch under test — what `clusterBatch` leaves behind. */
+async function makeDraft(overrides: DraftOverrides = {}) {
+  const categoryId = overrides.categoryId ?? (await makeCategory(`cat-${n++}`)).id
+  const s = `${n++}`
+  return db.item.create({
+    data: {
+      slug: `draft-${s}`,
+      name: overrides.name ?? DRAFT_NAME,
+      description: '',
+      priceAgorot: overrides.priceAgorot ?? 0,
+      categoryId,
+      pickupFrom: overrides.from ?? utcDate(2026, 9, 12),
+      pickupTo: overrides.to ?? utcDate(2026, 9, 18),
+      status: overrides.status ?? ItemStatus.DRAFT,
+      importBatchId: overrides.batchId === undefined ? BATCH : overrides.batchId,
+    },
+  })
+}
+
+/** A photo row with a file on disk, so a test can see whether the files went too. */
+async function makePhoto(data: { itemId?: string | null; batchId?: string | null; position?: number } = {}) {
+  const photo = await db.photo.create({
+    data: {
+      itemId: data.itemId ?? null,
+      importBatchId: data.batchId === undefined ? BATCH : data.batchId,
+      width: 800,
+      height: 600,
+      lqip: 'x',
+      position: data.position ?? 0,
+    },
+  })
+  await mkdir(photoDir(photo.id), { recursive: true })
+  await writeFile(path.join(photoDir(photo.id), photoFilename(400)), 'not really a webp')
+  return photo
+}
+
+const itemIdOf = async (photoId: string) =>
+  (await db.photo.findUnique({ where: { id: photoId }, select: { itemId: true } }))?.itemId
+
+describe('movePhoto', () => {
+  it('moves a photo to another item without touching its files or its provenance', async () => {
+    const a = await makeDraft()
+    const b = await makeDraft()
+    const photo = await makePhoto({ itemId: a.id })
+
+    expect(await movePhoto(photo.id, b.id)).toEqual({ ok: true, itemId: b.id })
+
+    const moved = await db.photo.findUnique({ where: { id: photo.id } })
+    expect(moved?.itemId).toBe(b.id)
+    // importBatchId is provenance and is never cleared (spec §7.3).
+    expect(moved?.importBatchId).toBe(BATCH)
+    // A move is a database UPDATE; files are keyed by photo and must not move.
+    expect(existsSync(path.join(photoDir(photo.id), photoFilename(400)))).toBe(true)
+  })
+
+  it('appends the moved photo after the ones already on the destination', async () => {
+    const a = await makeDraft()
+    const b = await makeDraft()
+    await makePhoto({ itemId: b.id, position: 0 })
+    await makePhoto({ itemId: b.id, position: 1 })
+    const photo = await makePhoto({ itemId: a.id })
+
+    await movePhoto(photo.id, b.id)
+
+    const moved = await db.photo.findUnique({ where: { id: photo.id } })
+    expect(moved?.position).toBe(2)
+  })
+
+  it('leaves an item photoless rather than deleting it when its last photo moves away', async () => {
+    // The seller may be about to move another photo onto it. An item that
+    // vanished under them would take its headline and price with it.
+    const a = await makeDraft()
+    const b = await makeDraft()
+    const photo = await makePhoto({ itemId: a.id })
+
+    await movePhoto(photo.id, b.id)
+
+    expect(await db.item.findUnique({ where: { id: a.id } })).not.toBeNull()
+    expect(await db.photo.count({ where: { itemId: a.id } })).toBe(0)
+  })
+
+  it('creates a fresh draft in the same batch, with the carried-forward category and window', async () => {
+    const category = await makeCategory('ריהוט')
+    const a = await makeDraft({
+      categoryId: category.id,
+      from: utcDate(2026, 10, 1),
+      to: utcDate(2026, 10, 5),
+    })
+    const photo = await makePhoto({ itemId: a.id })
+
+    const result = await movePhoto(photo.id, 'new')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const created = await db.item.findUnique({ where: { id: result.itemId } })
+    expect(created).toMatchObject({
+      status: ItemStatus.DRAFT,
+      importBatchId: BATCH,
+      priceAgorot: 0,
+      name: DRAFT_NAME,
+      categoryId: category.id,
+    })
+    expect(created?.pickupFrom).toEqual(utcDate(2026, 10, 1))
+    expect(created?.pickupTo).toEqual(utcDate(2026, 10, 5))
+
+    expect(await itemIdOf(photo.id)).toBe(result.itemId)
+    // And the item it came off is still there, photoless.
+    expect(await db.item.findUnique({ where: { id: a.id } })).not.toBeNull()
+    expect(await db.photo.count({ where: { itemId: a.id } })).toBe(0)
+  })
+
+  it('refuses a photo that is not there', async () => {
+    expect(await movePhoto('nope', 'new')).toEqual({ ok: false, error: 'התמונה לא נמצאה.' })
+  })
+
+  it('refuses an unknown destination and leaves the photo where it was', async () => {
+    const a = await makeDraft()
+    const photo = await makePhoto({ itemId: a.id })
+
+    expect(await movePhoto(photo.id, 'no-such-item')).toEqual({ ok: false, error: 'הפריט לא נמצא.' })
+    expect(await itemIdOf(photo.id)).toBe(a.id)
+  })
+})
+
+describe('removePhoto', () => {
+  it('deletes the row and every file of the photo', async () => {
+    const a = await makeDraft()
+    const photo = await makePhoto({ itemId: a.id })
+
+    expect(await removePhoto(photo.id)).toEqual({ ok: true })
+    expect(await db.photo.findUnique({ where: { id: photo.id } })).toBeNull()
+    expect(existsSync(photoDir(photo.id))).toBe(false)
+    // The item survives its last photo, as it does for a move.
+    expect(await db.item.findUnique({ where: { id: a.id } })).not.toBeNull()
+  })
+
+  it('refuses a photo that is not there', async () => {
+    expect(await removePhoto('nope')).toEqual({ ok: false, error: 'התמונה לא נמצאה.' })
+  })
+})
+
+describe('bulkEdit', () => {
+  it('applies the patch to exactly the given items and no others', async () => {
+    const a = await makeDraft()
+    const b = await makeDraft()
+    const untouched = await makeDraft()
+
+    expect(
+      await bulkEdit([a.id, b.id], {
+        price: '120',
+        categoryName: 'כלי מטבח',
+        pickupFrom: '2026-10-01',
+        pickupTo: '2026-10-05',
+      }),
+    ).toEqual({ ok: true })
+
+    const category = await db.category.findUnique({ where: { name: 'כלי מטבח' } })
+    expect(category).not.toBeNull()
+
+    for (const id of [a.id, b.id]) {
+      const item = await db.item.findUnique({ where: { id } })
+      expect(item?.priceAgorot).toBe(12000)
+      expect(item?.categoryId).toBe(category?.id)
+      expect(item?.pickupFrom).toEqual(utcDate(2026, 10, 1))
+      expect(item?.pickupTo).toEqual(utcDate(2026, 10, 5))
+    }
+
+    const other = await db.item.findUnique({ where: { id: untouched.id } })
+    expect(other?.priceAgorot).toBe(untouched.priceAgorot)
+    expect(other?.categoryId).toBe(untouched.categoryId)
+    expect(other?.pickupFrom).toEqual(untouched.pickupFrom)
+  })
+
+  it('applies only the fields the patch carries', async () => {
+    const a = await makeDraft({ priceAgorot: 5000 })
+
+    expect(await bulkEdit([a.id], { pickupFrom: '2026-10-01', pickupTo: '2026-10-05' })).toEqual({ ok: true })
+
+    const item = await db.item.findUnique({ where: { id: a.id } })
+    expect(item?.priceAgorot).toBe(5000)
+    expect(item?.categoryId).toBe(a.categoryId)
+    expect(item?.pickupTo).toEqual(utcDate(2026, 10, 5))
+  })
+
+  it('reuses an existing category rather than making a second one', async () => {
+    const category = await makeCategory('ריהוט')
+    const a = await makeDraft()
+
+    await bulkEdit([a.id], { categoryName: '  ריהוט  ' })
+
+    expect((await db.item.findUnique({ where: { id: a.id } }))?.categoryId).toBe(category.id)
+    expect(await db.category.count({ where: { name: 'ריהוט' } })).toBe(1)
+  })
+
+  it('refuses an unparseable price with the message the item form uses, writing nothing', async () => {
+    const a = await makeDraft({ priceAgorot: 5000 })
+
+    expect(await bulkEdit([a.id], { price: 'בערך 800', pickupFrom: '2026-10-01', pickupTo: '2026-10-05' })).toEqual({
+      ok: false,
+      error: 'מחיר לא תקין.',
+    })
+
+    const item = await db.item.findUnique({ where: { id: a.id } })
+    expect(item?.priceAgorot).toBe(5000)
+    expect(item?.pickupFrom).toEqual(utcDate(2026, 9, 12))
+  })
+
+  it('refuses an empty category', async () => {
+    const a = await makeDraft()
+    expect(await bulkEdit([a.id], { categoryName: '   ' })).toEqual({ ok: false, error: 'צריך לבחור קטגוריה.' })
+    expect(await db.category.count()).toBe(1)
+  })
+
+  it('refuses a window that ends before it starts', async () => {
+    const a = await makeDraft()
+    expect(await bulkEdit([a.id], { pickupFrom: '2026-10-05', pickupTo: '2026-10-01' })).toEqual({
+      ok: false,
+      error: 'חלון האיסוף מסתיים לפני שהוא מתחיל.',
+    })
+  })
+
+  it('refuses half a window, which has no meaning across a selection', async () => {
+    const a = await makeDraft()
+    expect(await bulkEdit([a.id], { pickupFrom: '2026-10-01' })).toEqual({
+      ok: false,
+      error: 'חלון איסוף לא תקין.',
+    })
+    expect((await db.item.findUnique({ where: { id: a.id } }))?.pickupFrom).toEqual(utcDate(2026, 9, 12))
+  })
+
+  it('is a no-op for an empty patch or an empty selection', async () => {
+    const a = await makeDraft({ priceAgorot: 5000 })
+    expect(await bulkEdit([a.id], {})).toEqual({ ok: true })
+    expect(await bulkEdit([], { price: '120' })).toEqual({ ok: true })
+    expect((await db.item.findUnique({ where: { id: a.id } }))?.priceAgorot).toBe(5000)
+  })
+})
+
+describe('publishItems', () => {
+  it('publishes the items it can and reports the ones it cannot', async () => {
+    // One incomplete item must not cost the seller the whole publish: they
+    // selected twenty, and nineteen of them are ready.
+    const ready = await makeDraft({ name: 'ספה תלת מושבית', priceAgorot: 12345 })
+    const unpriced = await makeDraft({ name: 'כיסא', priceAgorot: 0 })
+    const unnamed = await makeDraft({ name: '', priceAgorot: 9900 })
+
+    const result = await publishItems([ready.id, unpriced.id, unnamed.id])
+
+    expect(result.ok).toBe(true)
+    expect(result.published).toBe(1)
+    expect(result.refused).toEqual([
+      { id: unpriced.id, error: 'מחיר לא תקין.' },
+      { id: unnamed.id, error: 'צריך שם לפריט.' },
+    ])
+
+    expect((await db.item.findUnique({ where: { id: ready.id } }))?.status).toBe(ItemStatus.AVAILABLE)
+    expect((await db.item.findUnique({ where: { id: unpriced.id } }))?.status).toBe(ItemStatus.DRAFT)
+    expect((await db.item.findUnique({ where: { id: unnamed.id } }))?.status).toBe(ItemStatus.DRAFT)
+  })
+
+  it('keeps the price it published, to the agora', async () => {
+    const ready = await makeDraft({ name: 'מנורה', priceAgorot: 12345 })
+    await publishItems([ready.id])
+    expect((await db.item.findUnique({ where: { id: ready.id } }))?.priceAgorot).toBe(12345)
+  })
+
+  it('gives the published draft a slug from its real name, as updateItem does', async () => {
+    // Evidence that publishing routes through updateItem rather than flipping
+    // the status by hand: only that path regenerates a draft's placeholder slug.
+    const ready = await makeDraft({ name: 'שולחן עץ', priceAgorot: 20000 })
+    expect(ready.slug.startsWith('draft-')).toBe(true)
+
+    await publishItems([ready.id])
+
+    const published = await db.item.findUnique({ where: { id: ready.id } })
+    expect(published?.slug.startsWith('draft-')).toBe(false)
+    expect(published?.slug).toContain('שולחן')
+  })
+
+  it('refuses an item that is not there without touching the rest', async () => {
+    const ready = await makeDraft({ name: 'מנורה', priceAgorot: 20000 })
+
+    const result = await publishItems(['no-such-item', ready.id])
+
+    expect(result.published).toBe(1)
+    expect(result.refused).toEqual([{ id: 'no-such-item', error: 'הפריט לא נמצא.' }])
+  })
+})
+
+describe('discardItems', () => {
+  it('deletes the items, their photo rows and their files', async () => {
+    const a = await makeDraft()
+    const b = await makeDraft()
+    const photoA = await makePhoto({ itemId: a.id })
+    const photoB = await makePhoto({ itemId: b.id })
+
+    expect(await discardItems([a.id, b.id])).toEqual({ ok: true })
+
+    expect(await db.item.count()).toBe(0)
+    expect(await db.photo.count()).toBe(0)
+    for (const id of [photoA.id, photoB.id]) expect(existsSync(photoDir(id))).toBe(false)
+  })
+
+  it('leaves an item that belongs to an order alone', async () => {
+    const sold = await makeDraft({ name: 'ספה', priceAgorot: 10000, status: ItemStatus.AVAILABLE })
+    await makeOrder([sold.id], { status: OrderStatus.PAID })
+
+    expect(await discardItems([sold.id])).toEqual({ ok: true })
+    expect(await db.item.findUnique({ where: { id: sold.id } })).not.toBeNull()
+  })
+})
+
+describe('discardBatch', () => {
+  it('deletes a photo that was never attached to any item', async () => {
+    // The reason discardBatch exists. Between /api/import writing photos and
+    // clusterBatch attaching them a photo belongs to no item, so nothing
+    // item-keyed can reach it: a closed tab in that window leaves the row and
+    // its files behind forever, and no screen can show them.
+    const loose = await makePhoto({ itemId: null })
+    const alsoLoose = await makePhoto({ itemId: null, position: 1 })
+
+    expect(await discardBatch(BATCH)).toEqual({ ok: true, items: 0, photos: 2 })
+
+    expect(await db.photo.count()).toBe(0)
+    for (const photo of [loose, alsoLoose]) expect(existsSync(photoDir(photo.id))).toBe(false)
+  })
+
+  it('deletes the batch items, their attached photos, the loose ones and every file', async () => {
+    const a = await makeDraft()
+    const b = await makeDraft()
+    const attached = await makePhoto({ itemId: a.id })
+    const alsoAttached = await makePhoto({ itemId: b.id })
+    const loose = await makePhoto({ itemId: null })
+
+    expect(await discardBatch(BATCH)).toEqual({ ok: true, items: 2, photos: 3 })
+
+    expect(await db.item.count({ where: { importBatchId: BATCH } })).toBe(0)
+    expect(await db.photo.count()).toBe(0)
+    for (const photo of [attached, alsoAttached, loose]) expect(existsSync(photoDir(photo.id))).toBe(false)
+  })
+
+  it('removes the files of a photo added to a batch item after the import', async () => {
+    // Its importBatchId is null — it did not arrive in the drop — but the
+    // item's deletion cascades its row, so its files have to go with it.
+    const a = await makeDraft()
+    const later = await makePhoto({ itemId: a.id, batchId: null })
+
+    expect(await discardBatch(BATCH)).toEqual({ ok: true, items: 1, photos: 1 })
+    expect(await db.photo.count()).toBe(0)
+    expect(existsSync(photoDir(later.id))).toBe(false)
+  })
+
+  it('leaves another batch entirely alone', async () => {
+    const mine = await makeDraft()
+    await makePhoto({ itemId: mine.id })
+    const other = await makeDraft({ batchId: 'another-batch' })
+    const otherPhoto = await makePhoto({ itemId: other.id, batchId: 'another-batch' })
+    const otherLoose = await makePhoto({ itemId: null, batchId: 'another-batch' })
+
+    expect(await discardBatch(BATCH)).toEqual({ ok: true, items: 1, photos: 1 })
+
+    expect(await db.item.findUnique({ where: { id: other.id } })).not.toBeNull()
+    expect(await db.photo.count({ where: { importBatchId: 'another-batch' } })).toBe(2)
+    for (const photo of [otherPhoto, otherLoose]) expect(existsSync(photoDir(photo.id))).toBe(true)
+  })
+
+  it('keeps an item an order is counting on, and that item keeps its photos', async () => {
+    const sold = await makeDraft({ name: 'ספה', priceAgorot: 10000, status: ItemStatus.AVAILABLE })
+    const keptPhoto = await makePhoto({ itemId: sold.id })
+    const discarded = await makeDraft()
+    const discardedPhoto = await makePhoto({ itemId: discarded.id })
+    await makeOrder([sold.id], { status: OrderStatus.PAID })
+
+    expect(await discardBatch(BATCH)).toEqual({ ok: true, items: 1, photos: 1 })
+
+    expect(await db.item.findUnique({ where: { id: sold.id } })).not.toBeNull()
+    expect(await db.photo.findUnique({ where: { id: keptPhoto.id } })).not.toBeNull()
+    expect(existsSync(photoDir(keptPhoto.id))).toBe(true)
+
+    expect(await db.item.findUnique({ where: { id: discarded.id } })).toBeNull()
+    expect(existsSync(photoDir(discardedPhoto.id))).toBe(false)
+  })
+
+  it('reports nothing for a batch that does not exist', async () => {
+    expect(await discardBatch('never-happened')).toEqual({ ok: true, items: 0, photos: 0 })
+  })
+})

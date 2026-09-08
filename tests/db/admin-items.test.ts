@@ -93,6 +93,22 @@ describe('createItem', () => {
   it('accepts a single-day pickup window', async () => {
     expect((await createItem({ ...valid, pickupFrom: '2026-09-12', pickupTo: '2026-09-12' })).ok).toBe(true)
   })
+
+  it('claims a loose photo but never one that already belongs to another item', async () => {
+    // Unscoped, this is a steal: the other item loses the photo with no error
+    // and nothing in the seller's list saying where it went. Reachable now
+    // that the import screen moves photos between items, so an id can arrive
+    // here already spoken for.
+    const owner = await makeItem()
+    const taken = await db.photo.create({ data: { itemId: owner.id, width: 800, height: 600, lqip: 'x', position: 0 } })
+    const loose = await db.photo.create({ data: { width: 800, height: 600, lqip: 'x', position: 0 } })
+
+    const r = await createItem({ ...valid, photoIds: [taken.id, loose.id] })
+    if (!r.ok) throw new Error('expected ok')
+
+    expect((await db.photo.findUnique({ where: { id: taken.id } }))?.itemId).toBe(owner.id)
+    expect((await db.photo.findUnique({ where: { id: loose.id } }))?.itemId).toBe(r.id)
+  })
 })
 
 describe('deleteItem', () => {
