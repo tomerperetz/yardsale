@@ -103,18 +103,41 @@ export async function clusterBatch(batchId: string): Promise<ClusterBatchResult>
 async function cluster(photos: BatchPhoto[], bytes: Map<string, Buffer>): Promise<Clustering> {
   const images = photos.filter((p) => bytes.has(p.id)).map((p) => ({ id: p.id, webp: bytes.get(p.id)! }))
 
-  // Nothing readable to show it. An empty request would come back as an empty
-  // grouping — a "success" carrying no clustering and no copy — so treat a
-  // batch whose files have all gone as the degradation it is.
+  // Nothing readable to show it — a misconfigured UPLOAD_DIR, or a volume that
+  // did not come back. This costs no API call either way: clusterPhotos
+  // short-circuits an empty list, and so does captionItem. What it changes is
+  // which of the two placeholder semantics this batch gets. Without it the
+  // empty grouping reads as a success, the caption pass runs, and every item
+  // is emptied to `name: ''` — the "asked and had nothing" outcome — when in
+  // truth the model was never asked. Recognised as a degradation, the items
+  // keep their placeholder and the seller is told no copy was generated.
   if (images.length === 0) return degraded(photos, 'NO_COPY')
 
-  const clustered = await clusterPhotos(images)
+  // The one seam whose throw would cost the seller the whole batch: an
+  // unhandled rejection here rejects clusterBatch, so no item is created and
+  // every photo stays itemId: null — invisible to the review screen, and
+  // reachable only by the batch-wide discard. A throw is a failed call like
+  // any other, so it takes the same capture-time fallback.
+  const clustered = await clusterPhotos(images).catch((err): AiResult<string[][]> => {
+    console.error('[import] the clustering call threw:', err)
+    return { ok: false, reason: 'FAILED' }
+  })
+
   if (clustered.ok) return { groups: clustered.value, captionable: true, notice: 'NONE' }
 
   return degraded(photos, clustered.reason === 'OUT_OF_CREDIT' ? 'OUT_OF_CREDIT' : 'NO_COPY')
 }
 
-/** Today's fallback grouping, and no copy: what every failed or skipped clustering lands on. */
+/**
+ * Today's fallback grouping, and no copy: what every failed or skipped
+ * clustering lands on.
+ *
+ * Items from here keep the `DRAFT_NAME` placeholder they were created with,
+ * where an item whose own caption call failed is emptied (see `captionOne`).
+ * That is deliberate and is the difference between "never asked" and "asked
+ * and had nothing": pass 2 never ran for these, so §7.2 step 4's placeholder
+ * is still the truth about them.
+ */
 function degraded(photos: BatchPhoto[], notice: ImportNotice): Clustering {
   const stamps: PhotoStamp[] = photos.map((p) => ({ key: p.id, takenAt: p.takenAt, lastModified: null }))
   return { groups: groupByCaptureTime(stamps), captionable: false, notice }

@@ -229,6 +229,21 @@ describe('clusterBatch when clustering fails', () => {
     await assertEveryPhotoPlaced(ids, result.itemIds)
   })
 
+  it('survives a clustering call that throws, rather than losing the whole batch', async () => {
+    // The seam with the worst blast radius: an unhandled rejection here would
+    // reject clusterBatch itself, leaving sixty photos with no item at all —
+    // invisible to the review screen, reachable only by discarding the batch.
+    const ids = await threeUnstamped()
+    clusterPhotos.mockRejectedValue(new Error('boom'))
+
+    const result = await clusterBatch(BATCH)
+
+    expect(result).toMatchObject({ ok: true, notice: 'NO_COPY' })
+    if (!result.ok) return
+    expect(captionItem).toHaveBeenCalledTimes(0)
+    await assertEveryPhotoPlaced(ids, result.itemIds)
+  })
+
   it('groups by capture time instead, so photos of one object stay together', async () => {
     const base = Date.UTC(2026, 8, 7, 9, 0, 0)
     const ids = await makePhotos([
