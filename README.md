@@ -358,6 +358,20 @@ fixture could say in advance what the review screen should show. It also
 keeps the suite off the network and off the API bill. The prompts themselves
 are checked against a model instead, by hand.
 
-Both suites share the one Postgres on port 5433 and both truncate it, so
-running either leaves the other's data gone — reseed with `npm run db:seed`
-(or your own demo seed) when you are done.
+With one exception, which is worth knowing if you run the suite with a key in
+your environment: Playwright reuses a server you already have on port 3000
+rather than starting its own, and a reused server keeps **its** environment,
+key included. So the import spec runs in serial mode and its first test is a
+guard that asserts the feature is off — against a keyed server that test
+fails and every test after it is skipped, before any of them can click
+"cluster these photos" and spend real API credit. If you see that spec
+skipped, stop the dev server on 3000 and run it again.
+
+The two suites share that one Postgres and treat it very differently, and
+only one of them destroys what is in it. `npm test` **empties every table** —
+items, photos, orders, categories and settings — before each database test,
+so it takes your demo data with it; reseed with `npm run db:seed` (or your
+own demo seed) afterwards. `npm run e2e` does not: it deletes only the rows
+it created, so a seed survives it. It does overwrite the single `Settings`
+row with its own test shop, so expect the shop name, tagline and BIT number
+to be the suite's when it finishes.

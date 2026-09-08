@@ -6,8 +6,8 @@ import { seedShop, addAdminSession, dropImportPhotos, cleanupImportBatch } from 
 /**
  * The AI import, end to end (spec §7, plan task 9).
  *
- * It runs with ANTHROPIC_API_KEY blanked — playwright.config.ts pins it that
- * way for every developer, whatever their .env holds. That is not a reduced
+ * It runs with ANTHROPIC_API_KEY blanked — playwright.config.ts starts the
+ * server that way whatever the developer's .env holds. That is not a reduced
  * version of the feature: the key is optional (spec §11) and its absence is
  * one of §7.4's specified paths, where clustering falls back to capture-time
  * grouping and no copy is generated. It is also the only path a test can make
@@ -16,6 +16,16 @@ import { seedShop, addAdminSession, dropImportPhotos, cleanupImportBatch } from 
  * decision, not the fixture's — and it keeps the suite off the network and off
  * the product owner's API credit. Prompt quality is checked against a model,
  * the way spec §10 asks, not from here.
+ *
+ * That blanking has one hole, which is why this file is `mode: 'serial'`:
+ * `reuseExistingServer` (playwright.config.ts) hands the run any server
+ * already listening on 3000, WITH ITS OWN ENVIRONMENT. A developer who left a
+ * keyed `npm run dev` up gets a keyed server, and every "קיבוץ התמונות"
+ * click below would then reach the real API — one clustering call plus a
+ * caption call per item, on the product owner's bill, before the assertion
+ * that noticed had a chance to fail. Serial makes the first test the guard:
+ * it asserts the feature is OFF, and when it is not, every test after it is
+ * skipped rather than run. The order of these tests is therefore load-bearing.
  *
  * So the photos are posted the way ImportDrop's own upload() posts them (see
  * `dropImportPhotos`), because the drop zone itself is only rendered when the
@@ -38,6 +48,11 @@ function shots(count: number, from: number, gap = 5) {
 }
 
 test.describe('ai import', () => {
+  // A failure stops the rest of the file. See the note above: the first test
+  // is the guard that keeps a keyed server from being billed by the ones
+  // after it, and a guard whose failure lets the others run anyway is not one.
+  test.describe.configure({ mode: 'serial' })
+
   test.beforeEach(async () => {
     // Every /admin page and the storefront both call getSettings()
     // (findUniqueOrThrow), so the singleton has to exist.

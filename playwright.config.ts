@@ -75,6 +75,14 @@ export default defineConfig({
     // which item holds which photo could survive it — and it keeps the suite
     // off the network and off the product owner's API credit. Prompt quality
     // is checked the way spec §10 asks, against a model, not from here.
+    //
+    // This applies to a server THIS CONFIG STARTS. `reuseExistingServer` above
+    // hands the run whatever is already on 3000, environment and all, so a
+    // developer with a keyed dev server up gets a keyed server and this line
+    // never runs. import.spec.ts closes that hole from its end: it is
+    // `mode: 'serial'` and its first test asserts the feature is off, so a
+    // keyed server skips every test that would have called the API rather
+    // than billing someone for the discovery.
     env: { ...(process.env as Record<string, string>), ANTHROPIC_API_KEY: '' },
   },
 })
