@@ -184,10 +184,10 @@
  */
 .rm {
   position: absolute;
-  inset-block-start: 5px;
-  inset-inline-start: 5px;
-  width: 30px;
-  height: 30px;
+  inset-block-start: 6px;
+  inset-inline-start: 6px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: rgba(27, 25, 23, 0.72);
   color: #fff;
@@ -197,6 +197,28 @@
   display: grid;
   place-items: center;
   padding: 0;
+}
+/*
+ * The tap target, a full 44x44, without a 44px black disc over a 96px
+ * thumbnail. This button deletes a photo and sits in a strip the seller flicks
+ * through on a phone: a thumb that lands a few pixels off must not cost them a
+ * shot. Hit testing follows the pseudo-element, so the target is 44px even
+ * though what is drawn is 32, and it is square because hit testing respects a
+ * border radius — a round one would give its corners back.
+ *
+ * Grown 1px outwards and 11px inwards rather than 6px each way: the thumbnail
+ * is a 14px-radius box with overflow hidden, so its own rounded corner clips
+ * anything within about 4px of the corner diagonally. Symmetric growth put the
+ * target's outer corner inside that arc and the browser stopped hit-testing it
+ * — measured, not reasoned about.
+ */
+.rm::after {
+  content: '';
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline-start: -1px;
+  inset-block-end: -11px;
+  inset-inline-end: -11px;
 }
 .rm:disabled {
   opacity: 0.5;
@@ -324,6 +346,17 @@
 }
 .barSpace {
   margin-inline-start: auto;
+}
+@media (max-width: 360px) {
+  /* Four pixels short of one row on a 320px phone, and a second row here
+     costs 50px of a screen the seller is editing a card on. Tighter padding
+     buys it back; the 40px height every target depends on is untouched. */
+  .bar {
+    padding: 10px;
+  }
+  .bar .act {
+    padding-inline: 12px;
+  }
 }
 
 .bulkEdit summary {

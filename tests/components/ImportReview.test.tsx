@@ -9,9 +9,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
  * window goes whole, that publishing writes what the seller is looking at,
  * and that nothing user-facing is in English.
  */
-const push = vi.fn()
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push, refresh: vi.fn(), replace: vi.fn() }) }))
-
 const bulkEdit = vi.fn()
 const clusterBatchAction = vi.fn()
 const discardBatch = vi.fn()
@@ -187,11 +184,17 @@ describe('the import review screen', () => {
   })
 
   it('saves what the seller typed before publishing it, and keeps a refused item on the screen', async () => {
-    publishItems.mockResolvedValue({ ok: true, published: 1, refused: [{ id: 'i2', error: 'מחיר לא תקין.' }] })
+    // The real refusal an unpriced draft comes back with, since every imported
+    // item is created at 0 agorot and this is the common one.
+    publishItems.mockResolvedValue({
+      ok: true,
+      published: 1,
+      refused: [{ id: 'i2', error: 'צריך לקבוע מחיר לפני הפרסום. פריט שניתן בחינם אפשר לפרסם מדף הפריט.' }],
+    })
     renderReview()
 
     fireEvent.change(screen.getAllByLabelText('שם הפריט')[0], { target: { value: 'ספה אפורה' } })
-    fireEvent.click(screen.getByText('פרסום הנבחרים'))
+    fireEvent.click(screen.getByText('פרסום'))
 
     // Only the edited card is written back before publishing — an untouched
     // one is already what the database holds.
@@ -202,7 +205,7 @@ describe('the import review screen', () => {
     )
     expect(publishItems).toHaveBeenCalledWith(['i1', 'i2'])
 
-    await waitFor(() => expect(screen.getByText('מחיר לא תקין.')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/צריך לקבוע מחיר לפני הפרסום/)).toBeTruthy())
     expect(screen.getByText('פריט אחד פורסם.')).toBeTruthy()
     // The published one has left the review; the refused one has not.
     expect(screen.queryByDisplayValue('ספה אפורה')).toBeNull()
@@ -214,7 +217,7 @@ describe('the import review screen', () => {
     renderReview()
 
     fireEvent.change(screen.getAllByLabelText('שם הפריט')[0], { target: { value: '' } })
-    fireEvent.click(screen.getByText('פרסום הנבחרים'))
+    fireEvent.click(screen.getByText('פרסום'))
 
     await waitFor(() => expect(screen.getByText('צריך שם לפריט.')).toBeTruthy())
     expect(publishItems).toHaveBeenCalledWith(['i2'])
@@ -223,7 +226,7 @@ describe('the import review screen', () => {
   it('discards the selection only after it is confirmed', async () => {
     renderReview()
 
-    fireEvent.click(screen.getByText('מחיקת הנבחרים'))
+    fireEvent.click(screen.getByText('מחיקה'))
     expect(discardItems).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByText('כן, למחוק'))
@@ -240,7 +243,26 @@ describe('the import review screen', () => {
 
     fireEvent.click(screen.getByText('כן, למחוק הכול'))
     await waitFor(() => expect(discardBatch).toHaveBeenCalledWith('batch-1'))
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/admin/items'))
+    // It says what went, rather than navigating away from the only report of
+    // it: discardBatch keeps an item a live order is counting on.
+    await waitFor(() => expect(screen.getByText('הייבוא נמחק: 2 פריטים, 3 תמונות.')).toBeTruthy())
+    expect(screen.getByText('לרשימת הפריטים').getAttribute('href')).toBe('/admin/items')
+  })
+
+  it('stays usable when a server action throws instead of returning a refusal', async () => {
+    removePhoto.mockRejectedValue(new Error('connection lost'))
+    renderReview()
+
+    fireEvent.click(screen.getAllByLabelText('הסרת התמונה')[0])
+
+    await waitFor(() => expect(screen.getByText('הפעולה נכשלה. בדקו את החיבור ונסו שוב.')).toBeTruthy())
+    // Not frozen: the screen's controls come back rather than staying disabled
+    // behind a `busy` flag nothing will ever clear.
+    const publish = screen.getByText('פרסום') as HTMLButtonElement
+    expect(publish.disabled).toBe(false)
+    expect((screen.getAllByLabelText('הסרת התמונה')[0] as HTMLButtonElement).disabled).toBe(false)
+    // And the photo it could not remove is still there.
+    expect(screen.getAllByAltText('').length).toBe(3)
   })
 
   it('offers to group photos that never got an item', async () => {

@@ -1,8 +1,7 @@
 'use client'
 
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { photoUrl } from '@/lib/photo-url'
 import { DRAFT_NAME } from '@/lib/admin/draft'
 import { PickupWindow } from '@/components/PickupWindow'
@@ -54,6 +53,12 @@ export type ReviewDefaults = { categoryName: string; pickupFrom: string; pickupT
 
 type Confirming = 'selection' | 'batch' | null
 
+/** What a server action that threw is reported as — see `run` below. */
+const ACTION_FAILED = 'הפעולה נכשלה. בדקו את החיבור ונסו שוב.'
+
+/** How long a "saved" / "published" line stays before it stops being news. */
+const FLASH_MS = 8000
+
 export function ImportReview({
   batchId,
   items: initialItems,
@@ -69,7 +74,6 @@ export function ImportReview({
   notice: ImportNotice
   defaults: ReviewDefaults
 }) {
-  const router = useRouter()
   const categoryListId = useId()
 
   const [items, setItems] = useState(initialItems)
@@ -85,11 +89,21 @@ export function ImportReview({
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState<Confirming>(null)
   const [publishedHere, setPublishedHere] = useState(0)
+  /** What the whole-import discard took, once it has run. */
+  const [discarded, setDiscarded] = useState<{ items: number; photos: number } | null>(null)
 
   const [bulkPrice, setBulkPrice] = useState('')
   const [bulkCategory, setBulkCategory] = useState(defaults.categoryName)
   const [bulkFrom, setBulkFrom] = useState(defaults.pickupFrom)
   const [bulkTo, setBulkTo] = useState(defaults.pickupTo)
+
+  // A flash reports what just happened. Left up, it is still claiming five
+  // minutes later that something was saved, over an edit made since.
+  useEffect(() => {
+    if (flash === null) return
+    const timer = setTimeout(() => setFlash(null), FLASH_MS)
+    return () => clearTimeout(timer)
+  }, [flash])
 
   const selectedIds = useMemo(
     () => items.filter((item) => selected.has(item.id)).map((item) => item.id),
@@ -148,16 +162,40 @@ export function ImportReview({
     return result.ok ? null : result.error
   }
 
-  async function handleSave(item: ReviewItem) {
+  /**
+   * Every action on this screen goes through here.
+   *
+   * A server action that THROWS — a dropped connection, a 500, a deploy
+   * mid-edit — is not the `{ ok: false }` each handler below reads. Left to
+   * themselves they would never reach their own `setBusy(false)`, so the
+   * screen would freeze with every control disabled and nothing said, and the
+   * only way out would be a reload: the seller loses the twenty cards they
+   * have just corrected because one request did not come back. So the flag is
+   * cleared in a `finally` and the throw becomes one Hebrew line.
+   */
+  async function run(work: () => Promise<void>) {
     setBusy(true)
-    setFlash(null)
-    const error = await saveOne(item)
-    setItemError(item.id, error)
-    if (error === null) {
-      clearDirty([item.id])
-      setFlash('נשמר.')
+    setErrors([])
+    try {
+      await work()
+    } catch (err) {
+      console.error('[import] a review action failed:', err)
+      setErrors([ACTION_FAILED])
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
+  }
+
+  async function handleSave(item: ReviewItem) {
+    await run(async () => {
+      setFlash(null)
+      const error = await saveOne(item)
+      setItemError(item.id, error)
+      if (error === null) {
+        clearDirty([item.id])
+        setFlash('נשמר.')
+      }
+    })
   }
 
   /**
@@ -167,20 +205,18 @@ export function ImportReview({
    */
   async function applyBulk(patch: { price?: string; categoryName?: string; pickupFrom?: string; pickupTo?: string }) {
     if (selectedIds.length === 0) return
-    setBusy(true)
-    setErrors([])
-    setFlash(null)
+    await run(async () => {
+      setFlash(null)
 
-    const result = await bulkEdit(selectedIds, patch)
-    if (!result.ok) {
-      setErrors([result.error])
-      setBusy(false)
-      return
-    }
+      const result = await bulkEdit(selectedIds, patch)
+      if (!result.ok) {
+        setErrors([result.error])
+        return
+      }
 
-    setItems((prev) => prev.map((item) => (selected.has(item.id) ? { ...item, ...patch } : item)))
-    setFlash(selectedIds.length === 1 ? 'הפריט עודכן.' : `עודכנו ${selectedIds.length} פריטים.`)
-    setBusy(false)
+      setItems((prev) => prev.map((item) => (selected.has(item.id) ? { ...item, ...patch } : item)))
+      setFlash(selectedIds.length === 1 ? 'הפריט עודכן.' : `עודכנו ${selectedIds.length} פריטים.`)
+    })
   }
 
   /**
@@ -190,100 +226,114 @@ export function ImportReview({
    *
    * A card that cannot be saved or cannot be published keeps its place with
    * its own message on it — one missing price must not cost the seller the
-   * other nineteen.
+   * other nineteen, and `publishItems` refuses on its own account too: an
+   * item a live order is counting on, or one already sold, is told so here
+   * rather than quietly skipped.
    */
   async function handlePublish() {
     if (selectedIds.length === 0) return
-    setBusy(true)
-    setErrors([])
-    setFlash(null)
+    await run(async () => {
+      setFlash(null)
 
-    const refusals: Record<string, string> = {}
-    const ready: string[] = []
+      const refusals: Record<string, string> = {}
+      const ready: string[] = []
 
-    for (const item of items) {
-      if (!selected.has(item.id)) continue
-      if (dirty.has(item.id)) {
-        const error = await saveOne(item)
-        if (error !== null) {
-          refusals[item.id] = error
-          continue
+      for (const item of items) {
+        if (!selected.has(item.id)) continue
+        if (dirty.has(item.id)) {
+          const error = await saveOne(item)
+          if (error !== null) {
+            refusals[item.id] = error
+            continue
+          }
         }
+        ready.push(item.id)
       }
-      ready.push(item.id)
-    }
 
-    if (ready.length > 0) {
-      const result = await publishItems(ready)
-      for (const refusal of result.refused) refusals[refusal.id] = refusal.error
-    }
+      if (ready.length > 0) {
+        const result = await publishItems(ready)
+        for (const refusal of result.refused) refusals[refusal.id] = refusal.error
+      }
 
-    const published = new Set(ready.filter((id) => !(id in refusals)))
+      const published = new Set(ready.filter((id) => !(id in refusals)))
 
-    setItems((prev) => prev.filter((item) => !published.has(item.id)))
-    setSelected((prev) => {
-      const next = new Set(prev)
-      for (const id of published) next.delete(id)
-      return next
+      setItems((prev) => prev.filter((item) => !published.has(item.id)))
+      setSelected((prev) => {
+        const next = new Set(prev)
+        for (const id of published) next.delete(id)
+        return next
+      })
+      // `ready` and not just `published`: an item that was saved here and then
+      // refused by publishItems has been written, and a card that says it
+      // still has unsaved changes when it does not is a lie the seller will
+      // act on.
+      clearDirty(ready)
+      setItemErrors(refusals)
+      setPublishedHere((count) => count + published.size)
+      setFlash(
+        published.size === 0 ? null : published.size === 1 ? 'פריט אחד פורסם.' : `פורסמו ${published.size} פריטים.`,
+      )
+      if (Object.keys(refusals).length > 0) {
+        setErrors(['חלק מהפריטים לא פורסמו. ההסבר מופיע על הכרטיס של כל אחד מהם.'])
+      }
     })
-    clearDirty(published)
-    setItemErrors(refusals)
-    setPublishedHere((count) => count + published.size)
-    setFlash(published.size === 0 ? null : published.size === 1 ? 'פריט אחד פורסם.' : `פורסמו ${published.size} פריטים.`)
-    if (Object.keys(refusals).length > 0) {
-      setErrors(['חלק מהפריטים לא פורסמו. ההסבר מופיע על הכרטיס של כל אחד מהם.'])
-    }
-    setBusy(false)
   }
 
   async function handleDiscardSelection() {
     const doomed = selectedIds
     if (doomed.length === 0) return
-    setBusy(true)
-    setErrors([])
     setConfirming(null)
+    await run(async () => {
+      await discardItems(doomed)
 
-    await discardItems(doomed)
-
-    const gone = new Set(doomed)
-    setItems((prev) => prev.filter((item) => !gone.has(item.id)))
-    setSelected(new Set())
-    clearDirty(gone)
-    setFlash(doomed.length === 1 ? 'הפריט נמחק.' : 'הפריטים שנבחרו נמחקו.')
-    setBusy(false)
+      const gone = new Set(doomed)
+      setItems((prev) => prev.filter((item) => !gone.has(item.id)))
+      setSelected(new Set())
+      clearDirty(gone)
+      setFlash(doomed.length === 1 ? 'הפריט נמחק.' : 'הפריטים שנבחרו נמחקו.')
+    })
   }
 
   /**
    * The whole import, and the only control that reaches a photo which never
-   * got an item (spec §7.3). Leaves for the item list afterwards: there is
-   * nothing left on this screen to look at.
+   * got an item (spec §7.3).
+   *
+   * It stays on the screen rather than leaving for the item list, because
+   * `discardBatch` comes back with what it deleted and that is worth showing:
+   * an item an order is counting on is kept, so "everything" is not always
+   * everything, and a seller who is told the counts can tell the difference.
    */
   async function handleDiscardBatch() {
-    setBusy(true)
     setConfirming(null)
-    await discardBatch(batchId)
-    router.push('/admin/items')
+    await run(async () => {
+      const result = await discardBatch(batchId)
+      setItems([])
+      setLoose([])
+      setSelected(new Set())
+      setDirty(new Set())
+      setItemErrors({})
+      setFlash(null)
+      setDiscarded({ items: result.items, photos: result.photos })
+    })
   }
 
   async function handleRemovePhoto(photoId: string, itemId: string | null) {
-    setBusy(true)
-    setErrors([])
-    const result = await removePhoto(photoId)
-    if (!result.ok) {
-      setErrors([result.error])
-      setBusy(false)
-      return
-    }
+    await run(async () => {
+      const result = await removePhoto(photoId)
+      if (!result.ok) {
+        setErrors([result.error])
+        return
+      }
 
-    if (itemId === null) setLoose((prev) => prev.filter((photo) => photo.id !== photoId))
-    else {
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === itemId ? { ...item, photos: item.photos.filter((photo) => photo.id !== photoId) } : item,
-        ),
-      )
-    }
-    setBusy(false)
+      if (itemId === null) setLoose((prev) => prev.filter((photo) => photo.id !== photoId))
+      else {
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === itemId ? { ...item, photos: item.photos.filter((photo) => photo.id !== photoId) } : item,
+          ),
+        )
+      }
+    })
   }
 
   /**
@@ -295,22 +345,21 @@ export function ImportReview({
    * server's carried-forward defaults have drifted from this prediction.
    */
   async function handleMove(photoId: string, fromItemId: string, toItemId: string) {
-    setBusy(true)
-    setErrors([])
-    const result = await movePhoto(photoId, toItemId === 'new' ? 'new' : toItemId)
-    if (!result.ok) {
-      setErrors([result.error])
-      setBusy(false)
-      return
-    }
+    await run(async () => {
+      const result = await movePhoto(photoId, toItemId === 'new' ? 'new' : toItemId)
+      if (!result.ok) {
+        setErrors([result.error])
+        return
+      }
 
-    const destination = result.itemId
-    const photo =
-      fromItemId === ''
-        ? loose.find((candidate) => candidate.id === photoId)
-        : items.find((item) => item.id === fromItemId)?.photos.find((candidate) => candidate.id === photoId)
+      const destination = result.itemId
+      const photo =
+        fromItemId === ''
+          ? loose.find((candidate) => candidate.id === photoId)
+          : items.find((item) => item.id === fromItemId)?.photos.find((candidate) => candidate.id === photoId)
 
-    if (photo) {
+      if (!photo) return
+
       if (fromItemId === '') setLoose((prev) => prev.filter((candidate) => candidate.id !== photoId))
 
       setItems((prev) => {
@@ -345,9 +394,7 @@ export function ImportReview({
         setSelected((prev) => new Set(prev).add(destination))
         setDirty((prev) => new Set(prev).add(destination))
       }
-    }
-
-    setBusy(false)
+    })
   }
 
   /**
@@ -356,17 +403,17 @@ export function ImportReview({
    * rather than merging: the items it creates are the server's to describe.
    */
   async function handleCluster() {
-    setBusy(true)
-    setErrors([])
-    const result = await clusterBatchAction(batchId)
-    if (!result.ok) {
-      setErrors([result.error])
-      setBusy(false)
-      return
-    }
-    const query = result.notice === 'NONE' ? '' : `?notice=${result.notice}`
-    window.location.href = `/admin/items/import/${batchId}${query}`
+    await run(async () => {
+      const result = await clusterBatchAction(batchId)
+      if (!result.ok) {
+        setErrors([result.error])
+        return
+      }
+      const query = result.notice === 'NONE' ? '' : `?notice=${result.notice}`
+      window.location.href = `/admin/items/import/${batchId}${query}`
+    })
   }
+
 
   const noticeLine =
     notice === 'OUT_OF_CREDIT'
@@ -378,11 +425,7 @@ export function ImportReview({
   if (items.length === 0 && loose.length === 0) {
     return (
       <div className={styles.empty}>
-        <p>
-          {publishedHere > 0
-            ? `סיימנו. מהייבוא הזה ${publishedHere === 1 ? 'פורסם פריט אחד' : `פורסמו ${publishedHere} פריטים`}.`
-            : 'אין פריטים בייבוא הזה.'}
-        </p>
+        <p>{closingLine(discarded, publishedHere)}</p>
         <Link href="/admin/items" className="btn btn-dark">
           לרשימת הפריטים
         </Link>
@@ -631,25 +674,13 @@ export function ImportReview({
       {items.length > 0 && (
         <div className={styles.bar}>
           <div className={styles.barRow}>
+            {/* The scope lives in this count, which is why the two buttons
+                beside it can be one word each — three words apiece wrapped the
+                bar onto a second row on a 390px phone, permanently, over the
+                card being edited. */}
             <span className={styles.barCount}>
               נבחרו {selectedIds.length} מתוך {items.length}
             </span>
-            <button
-              type="button"
-              className={styles.act}
-              onClick={() => setSelected(new Set(items.map((item) => item.id)))}
-              disabled={busy || selectedIds.length === items.length}
-            >
-              בחירת הכול
-            </button>
-            <button
-              type="button"
-              className={styles.act}
-              onClick={() => setSelected(new Set())}
-              disabled={busy || selectedIds.length === 0}
-            >
-              ניקוי הבחירה
-            </button>
             <span className={styles.barSpace} />
             {confirming === 'selection' ? (
               <>
@@ -675,7 +706,7 @@ export function ImportReview({
                 onClick={() => setConfirming('selection')}
                 disabled={busy || selectedIds.length === 0}
               >
-                מחיקת הנבחרים
+                מחיקה
               </button>
             )}
             <button
@@ -684,12 +715,37 @@ export function ImportReview({
               onClick={() => void handlePublish()}
               disabled={busy || selectedIds.length === 0}
             >
-              {busy ? 'רגע…' : 'פרסום הנבחרים'}
+              {busy ? 'רגע…' : 'פרסום'}
             </button>
           </div>
 
+          {/*
+            Only the count, discard and publish are always up. On a 390px phone
+            the whole bar was taking a fifth of the viewport over the card being
+            edited — and it is up from first paint, since everything starts
+            selected. Select-all and clear belong with the rest of the "do this
+            to all of them" controls anyway.
+          */}
           <details className={styles.bulkEdit}>
-            <summary>קביעת מחיר, קטגוריה ותאריכים לכל הנבחרים</summary>
+            <summary>בחירה ועריכה של כל הנבחרים</summary>
+            <div className={styles.bulkFields}>
+              <button
+                type="button"
+                className={styles.act}
+                onClick={() => setSelected(new Set(items.map((item) => item.id)))}
+                disabled={busy || selectedIds.length === items.length}
+              >
+                בחירת הכול
+              </button>
+              <button
+                type="button"
+                className={styles.act}
+                onClick={() => setSelected(new Set())}
+                disabled={busy || selectedIds.length === 0}
+              >
+                ניקוי הבחירה
+              </button>
+            </div>
             <div className={styles.bulkFields}>
               <div className={styles.bulkField}>
                 <label className="lbl" htmlFor="bulk-price">
@@ -811,6 +867,21 @@ export function ImportReview({
       </div>
     </div>
   )
+}
+
+/**
+ * What the screen says once there is nothing left on it: what the whole-import
+ * discard took, or what was published, or that the import was empty already.
+ */
+function closingLine(discarded: { items: number; photos: number } | null, published: number): string {
+  if (discarded !== null) {
+    const items = discarded.items === 1 ? 'פריט אחד' : `${discarded.items} פריטים`
+    return `הייבוא נמחק: ${items}, ${photosLabel(discarded.photos)}.`
+  }
+  if (published > 0) {
+    return `סיימנו. מהייבוא הזה ${published === 1 ? 'פורסם פריט אחד' : `פורסמו ${published} פריטים`}.`
+  }
+  return 'אין פריטים בייבוא הזה.'
 }
 
 /** Hebrew counts one thing by name, not by numeral: "1 תמונות" is wrong in a way a seller notices. */
