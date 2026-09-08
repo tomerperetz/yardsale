@@ -227,6 +227,32 @@ endpoint lets anyone on the internet write files to the seller's disk.
 
 Per-file failures are reported per file and do not fail the batch, as today.
 
+### The client uploads in chunks
+
+A sixty-photo drop is not one request. `request.formData()` buffers the entire
+multipart body before any per-file check can run, so a single request carrying
+sixty phone photos means a quarter of a gigabyte resident at once — plus sharp's
+working memory per photo — on a container whose memory limit is not ours to
+assume. An OOM kill there costs the seller the whole drop, and many platforms
+independently cap request bodies well below that.
+
+So the client posts **6 photos per request**. Worst case per request is
+6 × `MAX_BYTES` = 72 MB, typical is nearer 24 MB.
+
+- The first request carries no batch id and the response mints one.
+- Every subsequent request sends that batch id and its photos join it.
+- A request that fails takes its six photos with it, not the batch: the client
+  reports which failed and the rest stand.
+
+Three things follow, and all three are wins rather than costs. Memory is
+bounded regardless of drop size or container. The seller sees photos land as
+they go instead of watching one long silence. And a dropped connection costs
+one chunk rather than everything.
+
+The per-key rate limit must therefore be **per namespace**, not module-wide:
+one drop is now up to ten requests, and the shared 10-per-15-minutes budget
+would refuse the seller's second import of the day.
+
 ### 7.2 `clusterBatch(batchId)` — server action
 
 1. Load the batch's photos. If none, return an error.
