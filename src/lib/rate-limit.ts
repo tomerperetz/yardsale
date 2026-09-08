@@ -1,16 +1,17 @@
 const WINDOW_MS = 15 * 60_000
-const MAX_ATTEMPTS = 10
 const MAX_KEYS = 1000
 
 /**
- * The global ceiling for each namespace, per window. Deliberately unequal:
- * the two things being limited have nothing in common but a mechanism.
+ * The two ceilings each namespace gets per window: `perKey` bounds one caller
+ * (one IP), `global` bounds every caller of that namespace together.
+ * Deliberately unequal, in both columns: the things being limited have nothing
+ * in common but a mechanism.
  *
- * `login` is one human typing one password. 60 in fifteen minutes is far more
- * than the seller will ever need and still bounds a header-rotating attacker
- * to 240 argon2id guesses an hour. It is left where it has always been:
- * tightening it would risk the very thing this split exists to prevent —
- * locking the seller out of their own shop mid-sale.
+ * `login` is one human typing one password. Ten guesses per IP, and 60 in
+ * fifteen minutes in total — far more than the seller will ever need, and
+ * still bounding a header-rotating attacker to 240 argon2id guesses an hour.
+ * It is left where it has always been: tightening it would risk the very thing
+ * this split exists to prevent — locking the seller out of their shop mid-sale.
  *
  * `checkout` is every buyer at once. A WhatsApp blast can put a hundred people
  * on the shop inside a minute, and the losers of a race retry; 300 is roughly
@@ -20,33 +21,37 @@ const MAX_KEYS = 1000
  * shop one caller can hold — the 20-item cap in reserveItems, a finite
  * catalogue, and the 15-minute hold already do that.
  *
+ * `import` is the seller dropping a sale's worth of photos at /api/import. It
+ * is authenticated, so this is not what keeps strangers out — the middleware
+ * is; it bounds how much sharp work one caller can queue. Its per-key ceiling
+ * is the one number here that is NOT ten, and cannot be: the client uploads
+ * six photos per request (spec §7.1), so a full 60-photo drop is ten requests,
+ * and ten would be spent exactly by one drop with nothing left for a single
+ * chunk retry. 40 is four full drops in a quarter of an hour, or one drop and
+ * thirty retries — comfortably past what a real import needs, and still an
+ * order of magnitude off what it would take to matter.
+ *
  * Adding a namespace here is the only way to create one, so the namespace map
- * below is bounded by this object and cannot grow at runtime.
+ * below is bounded by this object and cannot grow at runtime — and both of a
+ * namespace's ceilings are declared in the same place, so a new one cannot
+ * arrive with half a budget.
  */
-const GLOBAL_CEILINGS = {
-  login: 60,
-  checkout: 300,
-  /**
-   * `import` is the seller dropping a sale's worth of photos at /api/import.
-   * It is authenticated, so this is not the thing keeping strangers out — the
-   * middleware is. It bounds how much sharp work one caller can queue, and it
-   * is its own namespace so that a big import cannot spend the budget the
-   * seller needs to sign back in, which is exactly what the split exists for.
-   * 60 requests a window is many times a real import: one drop is one request.
-   */
-  import: 60,
+const CEILINGS = {
+  login: { perKey: 10, global: 60 },
+  checkout: { perKey: 10, global: 300 },
+  import: { perKey: 40, global: 60 },
   /** Anything that has not asked for a budget of its own. */
-  default: 60,
+  default: { perKey: 10, global: 60 },
 } as const
 
-export type RateLimitNamespace = keyof typeof GLOBAL_CEILINGS
+export type RateLimitNamespace = keyof typeof CEILINGS
 
 const attempts = new Map<string, number[]>()
 const globalAttempts = new Map<RateLimitNamespace, number[]>()
 
 /** Unknown namespaces fall into `default` rather than minting a bucket. */
 function bucketFor(namespace: string): RateLimitNamespace {
-  return namespace in GLOBAL_CEILINGS ? (namespace as RateLimitNamespace) : 'default'
+  return namespace in CEILINGS ? (namespace as RateLimitNamespace) : 'default'
 }
 
 /**
@@ -66,7 +71,7 @@ function bucketFor(namespace: string): RateLimitNamespace {
  * that /admin/login needs and lock the seller out of their own admin for a
  * whole window — during exactly the fifteen minutes when orders are arriving
  * and payments need confirming. Buyers and the seller now have independent
- * global ceilings and cannot reach each other's.
+ * ceilings, per key and global, and cannot reach each other's.
  */
 export function hit(
   key: string,
@@ -77,7 +82,7 @@ export function hit(
 
   const globals = (globalAttempts.get(ns) ?? []).filter((t) => now - t < WINDOW_MS)
   globalAttempts.set(ns, globals)
-  if (globals.length >= GLOBAL_CEILINGS[ns]) {
+  if (globals.length >= CEILINGS[ns].global) {
     return { allowed: false, retryAfterMs: WINDOW_MS - (now - globals[0]) }
   }
 
@@ -88,7 +93,7 @@ export function hit(
   const mapKey = `${ns}\u0000${key}`
   const recent = (attempts.get(mapKey) ?? []).filter((t) => now - t < WINDOW_MS)
 
-  if (recent.length >= MAX_ATTEMPTS) {
+  if (recent.length >= CEILINGS[ns].perKey) {
     attempts.set(mapKey, recent)
     return { allowed: false, retryAfterMs: WINDOW_MS - (now - recent[0]) }
   }

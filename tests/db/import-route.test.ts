@@ -32,8 +32,9 @@ type Part = { name: string; body: Buffer | string; takenAt?: string }
 /** A Buffer is backed by a pooled ArrayBufferLike, which File's types reject. */
 const blobPart = (body: Buffer | string): BlobPart => (typeof body === 'string' ? body : new Uint8Array(body))
 
-function importRequest(parts: Part[], headers: Record<string, string> = {}): NextRequest {
+function importRequest(parts: Part[], headers: Record<string, string> = {}, batchId?: string): NextRequest {
   const form = new FormData()
+  if (batchId !== undefined) form.append('batchId', batchId)
   for (const p of parts) {
     form.append('files', new File([blobPart(p.body)], p.name, { type: 'image/jpeg' }))
     form.append('takenAt', p.takenAt ?? '')
@@ -41,8 +42,8 @@ function importRequest(parts: Part[], headers: Record<string, string> = {}): Nex
   return new NextRequest('http://localhost/api/import', { method: 'POST', body: form, headers })
 }
 
-async function post(parts: Part[], headers: Record<string, string> = {}) {
-  const res = await POST(importRequest(parts, headers))
+async function post(parts: Part[], headers: Record<string, string> = {}, batchId?: string) {
+  const res = await POST(importRequest(parts, headers, batchId))
   return { status: res.status, body: (await res.json()) as { batchId?: string; photos?: { id: string; lqip: string; width: number; height: number }[]; errors?: string[]; error?: string } }
 }
 
@@ -197,12 +198,105 @@ describe('POST /api/import', () => {
   it('throttles one caller past their allowance, in its own namespace', async () => {
     const ip = { 'x-forwarded-for': '203.0.113.7, 10.0.0.1' }
 
-    for (let i = 0; i < 10; i++) {
+    // Ten of these is one drop, at six photos a request. The allowance has to
+    // outlast a drop with retries to spare, so it is well past ten.
+    for (let i = 0; i < 40; i++) {
       expect((await post([], ip)).status).toBe(400)
     }
 
     const { status, body } = await post([], ip)
     expect(status).toBe(429)
     expect(body.error).toBe('יותר מדי ניסיונות. נסו שוב בעוד רבע שעה.')
+  })
+})
+
+/**
+ * A drop is IMPORT_CHUNK_FILES photos per request, so nearly everything that
+ * bounds or orders a batch has to count the batch and not the request. Getting
+ * this wrong is silent: every chunk succeeds, and the damage is positions that
+ * collide inside one batch — which clusterBatch reads `orderBy: position`, so
+ * it scrambles the order Claude is shown the photos in — and a cap that bounds
+ * nothing at all.
+ */
+describe('POST /api/import across the chunks of one drop', () => {
+  const seedBatch = async (batchId: string, count: number) =>
+    db.photo.createMany({
+      data: Array.from({ length: count }, (_, i) => ({ importBatchId: batchId, width: 8, height: 6, lqip: 'x', position: i })),
+    })
+
+  it('joins a second chunk to the batch the first one minted', async () => {
+    const buf = await jpeg()
+
+    const first = await post([{ name: 'a.jpg', body: buf }, { name: 'b.jpg', body: buf }])
+    // The id goes back exactly as it came: this is also what pins the route's
+    // validator to the shape the route itself mints.
+    const second = await post([{ name: 'c.jpg', body: buf }, { name: 'd.jpg', body: buf }], {}, first.body.batchId)
+
+    expect(second.status).toBe(200)
+    expect(second.body.batchId).toBe(first.body.batchId)
+    expect(await db.photo.count({ where: { importBatchId: first.body.batchId } })).toBe(4)
+  })
+
+  it('numbers the second chunk after the first instead of colliding with it', async () => {
+    const buf = await jpeg()
+
+    const first = await post([{ name: 'a.jpg', body: buf }, { name: 'b.jpg', body: buf }])
+    const second = await post([{ name: 'c.jpg', body: buf }, { name: 'd.jpg', body: buf }], {}, first.body.batchId)
+
+    const rows = await db.photo.findMany({ where: { importBatchId: first.body.batchId }, orderBy: { position: 'asc' } })
+    expect(rows.map((r) => r.position)).toEqual([0, 1, 2, 3])
+    expect(new Set(rows.map((r) => r.position)).size).toBe(4)
+    // Contiguous AND in drop order: the four ids in the order they were sent.
+    expect(rows.map((r) => r.id)).toEqual([...first.body.photos!, ...second.body.photos!].map((p) => p.id))
+  })
+
+  it('refuses the photo that would be the batch 61st, however it is chunked', async () => {
+    const batchId = 'a'.repeat(24)
+    await seedBatch(batchId, MAX_IMPORT_FILES)
+
+    const { status, body } = await post([{ name: 'one-too-many.jpg', body: await jpeg() }], {}, batchId)
+
+    expect(status).toBe(400)
+    expect(body.error).toBe('יותר מדי תמונות בבת אחת. אפשר עד 60.')
+    expect(await db.photo.count({ where: { importBatchId: batchId } })).toBe(MAX_IMPORT_FILES)
+  })
+
+  it('refuses the whole chunk when only its last photo would be over the cap', async () => {
+    const batchId = 'b'.repeat(24)
+    await seedBatch(batchId, MAX_IMPORT_FILES - 2)
+    const buf = await jpeg()
+
+    const { status } = await post([{ name: 'a.jpg', body: buf }, { name: 'b.jpg', body: buf }, { name: 'c.jpg', body: buf }], {}, batchId)
+
+    expect(status).toBe(400)
+    expect(await db.photo.count({ where: { importBatchId: batchId } })).toBe(MAX_IMPORT_FILES - 2)
+  })
+
+  it('accepts the photo that makes the batch exactly 60', async () => {
+    const batchId = 'c'.repeat(24)
+    await seedBatch(batchId, MAX_IMPORT_FILES - 1)
+
+    const { status } = await post([{ name: 'last.jpg', body: await jpeg() }], {}, batchId)
+
+    expect(status).toBe(200)
+    expect(await db.photo.count({ where: { importBatchId: batchId } })).toBe(MAX_IMPORT_FILES)
+  })
+
+  it('counts each batch on its own', async () => {
+    const full = 'd'.repeat(24)
+    await seedBatch(full, MAX_IMPORT_FILES)
+
+    const { status } = await post([{ name: 'a.jpg', body: await jpeg() }])
+
+    expect(status).toBe(200)
+  })
+
+  it('refuses a batch id it did not mint the shape of', async () => {
+    for (const bad of ['', 'not-a-batch', 'A'.repeat(24), 'a'.repeat(23), 'a'.repeat(25), '../../etc/passwd', 'a'.repeat(12) + '/..']) {
+      const { status, body } = await post([{ name: 'a.jpg', body: 'x' }], {}, bad)
+      expect(status, `batchId ${JSON.stringify(bad)}`).toBe(400)
+      expect(body.error).toBe('invalid batchId')
+    }
+    expect(await db.photo.count()).toBe(0)
   })
 })

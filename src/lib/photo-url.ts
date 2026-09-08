@@ -26,22 +26,42 @@ export const MAX_PHOTOS_PER_ITEM = 10
 export const MAX_REQUEST_BYTES = 64 * 1024 * 1024
 
 /**
- * The most files one POST /api/import may carry, and the ONLY bound on an
- * import batch. MAX_PHOTOS_PER_ITEM does not apply there: the seller drops a
- * whole sale at once and clustering decides afterwards which photos are one
- * product, so a cluster has no cap — twelve shots of one sofa must all survive.
+ * The most photos one import batch may hold, across every request that adds to
+ * it, and the ONLY bound on a batch. MAX_PHOTOS_PER_ITEM does not apply to an
+ * import: the seller drops a whole sale at once and clustering decides
+ * afterwards which photos are one product, so a cluster has no cap — twelve
+ * shots of one sofa must all survive.
  */
 export const MAX_IMPORT_FILES = 60
 
 /**
- * Per POST /api/import request. Sized for what MAX_IMPORT_FILES actually
- * allows, which is far more than one item's worth: 60 phone photos at 2-5 MB
- * is 120-300 MB, so MAX_REQUEST_BYTES (64 MB, sized for ten) would refuse an
- * ordinary drop of twenty. It is not 60 × MAX_BYTES either — that ceiling
- * (720 MB) exists for the odd large file, not for sixty of them, and
- * request.formData() buffers the whole body before any per-file check can run.
+ * How many photos the client puts in one POST /api/import (spec §7.1).
+ *
+ * A sixty-photo drop is not one request: request.formData() buffers the whole
+ * multipart body before any per-file check can run, so one request carrying
+ * the batch would mean a quarter of a gigabyte resident at once — plus sharp's
+ * working memory per photo — on a container whose memory limit is not ours to
+ * assume, and many platforms cap request bodies well below that anyway. An OOM
+ * there costs the seller the entire drop.
+ *
+ * At six, memory is bounded regardless of how much the seller drops, the
+ * photos land visibly as they go, and a dropped connection costs one chunk
+ * rather than everything. The server does not enforce this count — the byte
+ * ceiling below and MAX_IMPORT_FILES are the bounds it enforces — it is here so
+ * the client and that ceiling are sized from one number.
  */
-export const MAX_IMPORT_REQUEST_BYTES = 256 * 1024 * 1024
+export const IMPORT_CHUNK_FILES = 6
+
+/**
+ * Per POST /api/import request: one chunk of the largest files this route
+ * accepts, plus a megabyte for multipart framing so that six individually
+ * legal files are never refused as the sum of their parts.
+ *
+ * Not MAX_REQUEST_BYTES, whose 64 MB is sized for one item's ten photos and
+ * would be both too small for a chunk of six 12 MB files and, more to the
+ * point, about a different route's cap.
+ */
+export const MAX_IMPORT_REQUEST_BYTES = IMPORT_CHUNK_FILES * MAX_BYTES + 1024 * 1024
 
 /**
  * What a photo id is allowed to look like, and the only thing that may become

@@ -10,15 +10,22 @@ import { hit } from '@/lib/rate-limit'
 // an unauthenticated request never reaches this handler.
 
 /**
- * Intake for the AI import: the seller drops a whole sale's worth of photos at
- * once and this stores them and returns, so the client can show thumbnails
- * while clustering runs separately (clusterBatch). The photos are written with
- * an importBatchId and NO itemId — nothing yet knows which product each shows.
+ * Intake for the AI import: the seller drops a whole sale's worth of photos and
+ * this stores them and returns, so the client can show thumbnails while
+ * clustering runs separately (clusterBatch). The photos are written with an
+ * importBatchId and NO itemId — nothing yet knows which product each shows.
  *
- * Deliberately unlike /api/upload in one way only: MAX_PHOTOS_PER_ITEM does
- * not apply. A cluster has no cap, and the seller who took twelve shots of one
- * sofa must not lose two of them. The batch cap of MAX_IMPORT_FILES is the
- * only bound here.
+ * One drop is many requests. The client posts IMPORT_CHUNK_FILES photos at a
+ * time (spec §7.1, and the reasoning is on that constant): the first request
+ * carries no batch id and the response mints one, every request after it sends
+ * that id back and its photos join the same batch. So everything bounding a
+ * batch — the cap and the position numbering — counts what the batch already
+ * holds, never what one request carries.
+ *
+ * Deliberately unlike /api/upload in one way: MAX_PHOTOS_PER_ITEM does not
+ * apply. A cluster has no cap, and the seller who took twelve shots of one sofa
+ * must not lose two of them. MAX_IMPORT_FILES bounds the batch, and the byte
+ * ceiling bounds one request; nothing bounds a cluster.
  *
  * The client sends the files under "files" and, for each file at the same
  * index, a "takenAt" field (an ISO datetime string, or empty when unknown).
@@ -39,6 +46,22 @@ function newId(): string {
   // project to call for an id that is not a row id.
   return randomBytes(12).toString('hex')
 }
+
+/**
+ * Exactly what newId() mints — twelve random bytes as lowercase hex. A batch
+ * id after the first chunk comes back from the client, and it becomes a URL
+ * segment at /admin/items/import/[batchId], so it is checked against the shape
+ * this server mints rather than merely being non-empty.
+ *
+ * It is NOT checked against the database: there is no ImportBatch table, and a
+ * batch exists only as the id its photos carry, so the first chunk of a batch
+ * has nothing to match. An authenticated seller choosing their own well-shaped
+ * id groups their own photos under it, which is what the field is for.
+ *
+ * The route's own minting is what keeps this honest: the two are pinned
+ * together by the round-trip test, which posts a minted id straight back.
+ */
+const BATCH_ID_RE = /^[0-9a-f]{24}$/
 
 export async function POST(req: NextRequest) {
   // Authenticated, so this is not what keeps strangers out — the middleware
@@ -71,16 +94,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'no files provided' }, { status: 400 })
   }
 
+  // Absent on the first chunk of a drop — that request is what mints the id
+  // the rest of them carry back.
+  const batchIdRaw = form.get('batchId')
+  if (batchIdRaw !== null && (typeof batchIdRaw !== 'string' || !BATCH_ID_RE.test(batchIdRaw))) {
+    return NextResponse.json({ error: 'invalid batchId' }, { status: 400 })
+  }
+  const batchId = batchIdRaw ?? newId()
+
+  // Both the cap and the position numbering count what the batch already
+  // holds, not what this request carries: six photos at a time means ten
+  // requests build one 60-photo batch, so a per-request check would bound
+  // nothing and per-request numbering would give every chunk positions 0-5.
+  const existing = await db.photo.count({ where: { importBatchId: batchId } })
+
   // Counted before anything is written, so an over-sized batch leaves no half
-  // an import behind for the seller to find and clean up.
-  if (files.length > MAX_IMPORT_FILES) {
+  // a chunk behind for the seller to find and clean up.
+  if (existing + files.length > MAX_IMPORT_FILES) {
     return NextResponse.json(
       { error: `יותר מדי תמונות בבת אחת. אפשר עד ${MAX_IMPORT_FILES}.` },
       { status: 400 },
     )
   }
-
-  const batchId = newId()
 
   const photos: { id: string; lqip: string; width: number; height: number }[] = []
   const errors: string[] = []
@@ -132,10 +167,19 @@ export async function POST(req: NextRequest) {
           width: stored.width,
           height: stored.height,
           lqip: stored.lqip,
-          // Drop order, over the photos that made it. clusterBatch renumbers
-          // within each item once it knows the groups; until then this is what
-          // the review screen and the fallback grouping read them in.
-          position: photos.length,
+          // Drop order across the whole batch, over the photos that made it —
+          // continued from what the batch already holds, the way /api/upload
+          // continues from its item's count. clusterBatch reads the batch
+          // `orderBy: position` and renumbers within each item once it knows
+          // the groups, so two chunks sharing positions 0-5 would not lose a
+          // photo but would scramble the order Claude sees them in.
+          //
+          // Chunks must therefore be posted one at a time: two in flight at
+          // once read the same `existing` and collide. There is no unique
+          // constraint on (importBatchId, position) to serialize against, and
+          // adding one to make a single seller's sequential uploads safe
+          // against themselves is not worth the migration.
+          position: existing + photos.length,
           ...(takenAt ? { takenAt: new Date(takenAt) } : {}),
         },
       })

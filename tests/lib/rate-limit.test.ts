@@ -122,6 +122,23 @@ describe('hit namespaces', () => {
     expect(hit('ip-6', 1000, 'import').allowed).toBe(true)
   })
 
+  it('gives the import namespace a per-key allowance a whole drop survives', () => {
+    // One drop is ten requests (60 photos, six a request), so a ten-per-key
+    // allowance would be spent exactly by one drop with nothing left to retry
+    // a chunk with. The per-key ceiling is per namespace for this reason.
+    for (let i = 0; i < 40; i++) expect(hit('1.2.3.4', 1000, 'import').allowed).toBe(true)
+    expect(hit('1.2.3.4', 1000, 'import').allowed).toBe(false)
+  })
+
+  it('leaves every other namespace the ten per key it has always had', () => {
+    for (const ns of ['login', 'checkout'] as const) {
+      for (let i = 0; i < 10; i++) expect(hit('1.2.3.4', 1000, ns).allowed).toBe(true)
+      expect(hit('1.2.3.4', 1000, ns).allowed).toBe(false)
+    }
+    for (let i = 0; i < 10; i++) expect(hit('1.2.3.4', 1000).allowed).toBe(true)
+    expect(hit('1.2.3.4', 1000).allowed).toBe(false)
+  })
+
   it('clears every namespace on reset', () => {
     drain('login', 60, 1000)
     drain('checkout', 300, 1000)

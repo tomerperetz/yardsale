@@ -243,6 +243,16 @@ So the client posts **6 photos per request**. Worst case per request is
 - Every subsequent request sends that batch id and its photos join it.
 - A request that fails takes its six photos with it, not the batch: the client
   reports which failed and the rest stand.
+- **Chunks are posted one at a time, never concurrently.** Each request numbers
+  its photos from the batch's existing count, so two requests in flight at once
+  read the same count and assign colliding positions. Nothing is lost — every
+  photo still gets an item — but `clusterBatch` reads the batch in position
+  order, so the sequence the model sees is scrambled, and with it the choice of
+  cover photo. There is deliberately no unique constraint on
+  `(importBatchId, position)` to serialise against: adding one so that a single
+  seller's own sequential uploads are safe against themselves is not worth the
+  migration. Posting sequentially is the cheaper guarantee, and it also gives
+  the progress reporting its natural cadence.
 
 Three things follow, and all three are wins rather than costs. Memory is
 bounded regardless of drop size or container. The seller sees photos land as
