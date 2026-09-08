@@ -112,6 +112,16 @@ describe('hit namespaces', () => {
     expect(hit('ip-6', 1000, 'login').allowed).toBe(true)
   })
 
+  it('gives an import batch a budget of its own, not the default one', () => {
+    // The failure this catches is silent: an undeclared namespace is routed to
+    // `default`, so the import route would look rate limited while spending
+    // whatever else falls through to default — and would be refused here.
+    for (let i = 0; i < 60; i++) expect(hit(`ip-${Math.floor(i / 10)}`, 1000).allowed).toBe(true)
+    expect(hit('ip-6', 1000).allowed).toBe(false)
+
+    expect(hit('ip-6', 1000, 'import').allowed).toBe(true)
+  })
+
   it('clears every namespace on reset', () => {
     drain('login', 60, 1000)
     drain('checkout', 300, 1000)

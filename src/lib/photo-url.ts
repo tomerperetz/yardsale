@@ -26,6 +26,24 @@ export const MAX_PHOTOS_PER_ITEM = 10
 export const MAX_REQUEST_BYTES = 64 * 1024 * 1024
 
 /**
+ * The most files one POST /api/import may carry, and the ONLY bound on an
+ * import batch. MAX_PHOTOS_PER_ITEM does not apply there: the seller drops a
+ * whole sale at once and clustering decides afterwards which photos are one
+ * product, so a cluster has no cap — twelve shots of one sofa must all survive.
+ */
+export const MAX_IMPORT_FILES = 60
+
+/**
+ * Per POST /api/import request. Sized for what MAX_IMPORT_FILES actually
+ * allows, which is far more than one item's worth: 60 phone photos at 2-5 MB
+ * is 120-300 MB, so MAX_REQUEST_BYTES (64 MB, sized for ten) would refuse an
+ * ordinary drop of twenty. It is not 60 × MAX_BYTES either — that ceiling
+ * (720 MB) exists for the odd large file, not for sixty of them, and
+ * request.formData() buffers the whole body before any per-file check can run.
+ */
+export const MAX_IMPORT_REQUEST_BYTES = 256 * 1024 * 1024
+
+/**
  * What a photo id is allowed to look like, and the only thing that may become
  * a directory name under UPLOAD_DIR.
  *

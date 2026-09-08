@@ -26,6 +26,15 @@ const MAX_KEYS = 1000
 const GLOBAL_CEILINGS = {
   login: 60,
   checkout: 300,
+  /**
+   * `import` is the seller dropping a sale's worth of photos at /api/import.
+   * It is authenticated, so this is not the thing keeping strangers out — the
+   * middleware is. It bounds how much sharp work one caller can queue, and it
+   * is its own namespace so that a big import cannot spend the budget the
+   * seller needs to sign back in, which is exactly what the split exists for.
+   * 60 requests a window is many times a real import: one drop is one request.
+   */
+  import: 60,
   /** Anything that has not asked for a budget of its own. */
   default: 60,
 } as const
