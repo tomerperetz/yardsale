@@ -6,6 +6,7 @@ import { readTakenAt } from '@/lib/exif-client'
 import { convertHeicIfNeeded } from '@/lib/heic-client'
 import { groupByCaptureTime, type PhotoStamp } from '@/lib/exif'
 import { createItemAction, updateItemAction } from '@/app/admin/items/actions'
+import { ImportDrop } from '@/app/admin/items/import/ImportDrop'
 import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, MAX_REQUEST_BYTES } from '@/lib/photo-url'
 import styles from './admin.module.css'
 
@@ -19,17 +20,26 @@ type StepResult = UploadResult & { published: boolean }
  * fix any wrong guesses with a split/merge before anything is written, then
  * walk the queue one item at a time — each step creates and publishes one
  * item and uploads its group's photos to it.
+ *
+ * This is now the FALLBACK flow. When ANTHROPIC_API_KEY is set the same tab
+ * hands the seller the AI import instead (ImportDrop → the review screen),
+ * which groups the photos by what is in them and writes the copy. Without a
+ * key none of that can happen, so the tab says so and this queue takes over —
+ * spec §7.4's first row.
  */
 export function BulkQueue({
   categories,
   initialCategory,
   initialPickupFrom,
   initialPickupTo,
+  aiEnabled,
 }: {
   categories: string[]
   initialCategory: string
   initialPickupFrom: string
   initialPickupTo: string
+  /** Whether the AI import is configured — `aiEnabled()` from src/lib/ai/client.ts. */
+  aiEnabled: boolean
 }) {
   const router = useRouter()
   const inputId = useId()
@@ -238,49 +248,65 @@ export function BulkQueue({
     setPhase('result')
   }
 
+  // After every hook above, never before: the branch is a constant for the
+  // life of the mount (the server reads the key once per render), but React's
+  // hook order must not depend on it even so.
+  if (aiEnabled) return <ImportDrop />
+
   return (
     <div>
       {stage === 'drop' && (
-        <div
-          className={styles.drop}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault()
-            if (e.dataTransfer.files.length > 0) void handleFiles(e.dataTransfer.files)
-          }}
-        >
-          {/* Label association makes the whole hint block a tap target too —
-              on a phone there's nothing to drag, and this reaches the
-              gallery, not just the camera (see the input below). Also
-              keyboard-reachable: the input is only visually hidden, so Tab
-              lands on it directly. */}
-          <label htmlFor={inputId} className={styles.dropHint}>
-            <b>{reading ? 'קוראים את התמונות…' : 'גררו לכאן את כל התמונות מהמצלמה או הקישו לבחירה מהגלריה'}</b>
-            אפשר לבחור כמה תמונות בבת אחת. נזהה אוטומטית אילו תמונות שייכות לאותו פריט.
-          </label>
-          <div className={styles.actions} style={{ justifyContent: 'center' }}>
-            <button type="button" className="btn btn-accent" onClick={() => fileInputRef.current?.click()} disabled={reading}>
-              בחירת תמונות
-            </button>
-          </div>
-          <input
-            id={inputId}
-            ref={fileInputRef}
-            type="file"
-            // Deliberately exactly "image/*" — see PhotoDrop.tsx for why this
-            // must never be narrowed (breaks iOS's free HEIC→JPEG transcode)
-            // and must never gain a `capture` attribute (forces the camera,
-            // removing the gallery — exactly wrong for a seller who already
-            // photographed everything).
-            accept="image/*"
-            multiple
-            className={styles.visuallyHidden}
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files)
-              e.target.value = ''
+        <>
+          <p className={styles.offNote}>
+            הזיהוי האוטומטי כבוי כרגע, אז לא ניצור שמות ותיאורים לבד. נקבץ את התמונות לפי זמן הצילום, ואפשר לתקן את
+            הקיבוץ לפני שנוצר משהו.
+          </p>
+          <div
+            className={styles.drop}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault()
+              if (e.dataTransfer.files.length > 0) void handleFiles(e.dataTransfer.files)
             }}
-          />
-        </div>
+          >
+            {/* Label association makes the whole hint block a tap target too —
+                on a phone there's nothing to drag, and this reaches the
+                gallery, not just the camera (see the input below). Also
+                keyboard-reachable: the input is only visually hidden, so Tab
+                lands on it directly. */}
+            <label htmlFor={inputId} className={styles.dropHint}>
+              <b>{reading ? 'קוראים את התמונות…' : 'גררו לכאן את כל התמונות מהמצלמה או הקישו לבחירה מהגלריה'}</b>
+              אפשר לבחור כמה תמונות בבת אחת. נזהה אוטומטית אילו תמונות שייכות לאותו פריט.
+            </label>
+            <div className={styles.actions} style={{ justifyContent: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-accent"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={reading}
+              >
+                בחירת תמונות
+              </button>
+            </div>
+            <input
+              id={inputId}
+              ref={fileInputRef}
+              type="file"
+              // Deliberately exactly "image/*" — see PhotoDrop.tsx for why this
+              // must never be narrowed (breaks iOS's free HEIC→JPEG transcode)
+              // and must never gain a `capture` attribute (forces the camera,
+              // removing the gallery — exactly wrong for a seller who already
+              // photographed everything).
+              accept="image/*"
+              multiple
+              className={styles.visuallyHidden}
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files)
+                e.target.value = ''
+              }}
+            />
+          </div>
+        </>
       )}
 
       {stage === 'review' && (

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { OrderStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
+import { aiEnabled } from '@/lib/ai/client'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { photoUrl } from '@/lib/photo-url'
 import { ItemForm } from '@/components/admin/ItemForm'
@@ -76,6 +77,10 @@ export default async function AdminItemsPage({
   const initialPickupFrom = lastItem ? toDateInput(lastItem.pickupFrom) : toDateInput(today)
   const initialPickupTo = lastItem ? toDateInput(lastItem.pickupTo) : toDateInput(inAWeek)
   const categoryNames = categories.map((c) => c.name)
+  // Read once per render on the server: a key added to the environment starts
+  // working on the next page load, and its absence never reaches the browser
+  // as a broken feature — the bulk tab falls back to capture-time grouping.
+  const aiImport = aiEnabled()
   const listedCount = items.filter((i) => i.status === 'AVAILABLE' || i.status === 'RESERVED').length
 
   return (
@@ -107,7 +112,9 @@ export default async function AdminItemsPage({
               <p className={styles.psub}>
                 {mode === 'single'
                   ? 'גוררים תמונות, ממלאים ארבעה שדות, שומרים וממשיכים לבא. הקטגוריה וחלון האיסוף נשמרים אוטומטית.'
-                  : 'גוררים את כל התמונות בבת אחת. כל קבוצה נפתחת כפריט, ואתם יורדים בתור וממלאים רק את מה שמשתנה.'}
+                  : aiImport
+                    ? 'גוררים את כל התמונות בבת אחת. נחלק אותן לפריטים, נכתוב לכל פריט שם ותיאור, ואתם מתקנים ומפרסמים ממסך אחד.'
+                    : 'גוררים את כל התמונות בבת אחת. כל קבוצה נפתחת כפריט, ואתם יורדים בתור וממלאים רק את מה שמשתנה.'}
               </p>
 
               <div className={styles.modes}>
@@ -133,6 +140,7 @@ export default async function AdminItemsPage({
                   initialCategory={initialCategory}
                   initialPickupFrom={initialPickupFrom}
                   initialPickupTo={initialPickupTo}
+                  aiEnabled={aiImport}
                 />
               )}
             </section>

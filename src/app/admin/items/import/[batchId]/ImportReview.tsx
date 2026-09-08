@@ -1,0 +1,837 @@
+'use client'
+
+import { useId, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { photoUrl } from '@/lib/photo-url'
+import { DRAFT_NAME } from '@/lib/admin/draft'
+import { PickupWindow } from '@/components/PickupWindow'
+import { updateItemAction } from '@/app/admin/items/actions'
+import type { ImportNotice } from '@/lib/import/batch'
+import {
+  bulkEdit,
+  clusterBatchAction,
+  discardBatch,
+  discardItems,
+  movePhoto,
+  publishItems,
+  removePhoto,
+} from '../actions'
+import styles from '../import.module.css'
+
+/**
+ * Where the seller corrects what Claude proposed and finishes the job
+ * (spec §7.3): a card per proposed item with its photo strip and its fields,
+ * per-photo remove and move-to controls, and a bulk bar over the selection
+ * that sets dates, category or price across many items at once, publishes
+ * them, or throws them away.
+ *
+ * This component's state is authoritative for the duration of the review. It
+ * is seeded from the server once and never re-seeded, because the seller is
+ * typing into it: a server action's revalidation arriving mid-edit must not
+ * replace a headline they are halfway through. The one path that needs the
+ * server's answer instead — re-running the clustering over photos that never
+ * got an item — reloads the page outright rather than merging.
+ */
+
+export type ReviewPhoto = { id: string; lqip: string }
+
+export type ReviewItem = {
+  id: string
+  name: string
+  description: string
+  /** Shekels as the seller types them; '' for an imported draft nobody has priced. */
+  price: string
+  categoryName: string
+  /** `<input type="date">` values — the strings the actions parse back. */
+  pickupFrom: string
+  pickupTo: string
+  photos: ReviewPhoto[]
+}
+
+/** What a card minted mid-review opens with — see `handleMove`. */
+export type ReviewDefaults = { categoryName: string; pickupFrom: string; pickupTo: string }
+
+type Confirming = 'selection' | 'batch' | null
+
+export function ImportReview({
+  batchId,
+  items: initialItems,
+  categories,
+  loosePhotos,
+  notice,
+  defaults,
+}: {
+  batchId: string
+  items: ReviewItem[]
+  categories: string[]
+  loosePhotos: ReviewPhoto[]
+  notice: ImportNotice
+  defaults: ReviewDefaults
+}) {
+  const router = useRouter()
+  const categoryListId = useId()
+
+  const [items, setItems] = useState(initialItems)
+  const [loose, setLoose] = useState(loosePhotos)
+  // Everything is selected to begin with: the seller's usual next move is one
+  // pickup window and one publish across the whole drop, and nobody should
+  // have to tick twenty boxes to get there.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialItems.map((item) => item.id)))
+  const [dirty, setDirty] = useState<Set<string>>(() => new Set())
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({})
+  const [errors, setErrors] = useState<string[]>([])
+  const [flash, setFlash] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [confirming, setConfirming] = useState<Confirming>(null)
+  const [publishedHere, setPublishedHere] = useState(0)
+
+  const [bulkPrice, setBulkPrice] = useState('')
+  const [bulkCategory, setBulkCategory] = useState(defaults.categoryName)
+  const [bulkFrom, setBulkFrom] = useState(defaults.pickupFrom)
+  const [bulkTo, setBulkTo] = useState(defaults.pickupTo)
+
+  const selectedIds = useMemo(
+    () => items.filter((item) => selected.has(item.id)).map((item) => item.id),
+    [items, selected],
+  )
+
+  function editItem(id: string, patch: Partial<ReviewItem>) {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+    setDirty((prev) => new Set(prev).add(id))
+  }
+
+  function clearDirty(ids: Iterable<string>) {
+    setDirty((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) next.delete(id)
+      return next
+    })
+  }
+
+  function setItemError(id: string, error: string | null) {
+    setItemErrors((prev) => {
+      const next = { ...prev }
+      if (error === null) delete next[id]
+      else next[id] = error
+      return next
+    })
+  }
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  /**
+   * Saves one card through the same `updateItem` the single-item form uses,
+   * so the validation and its Hebrew messages are identical here — and so a
+   * draft's slug is regenerated from the headline the seller actually kept.
+   */
+  async function saveOne(item: ReviewItem): Promise<string | null> {
+    const result = await updateItemAction(item.id, {
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      categoryName: item.categoryName,
+      pickupFrom: item.pickupFrom,
+      pickupTo: item.pickupTo,
+      // The import screen has already put every photo where the seller wants
+      // it; `updateItem` does not attach photos.
+      photoIds: [],
+      publish: false,
+    })
+    return result.ok ? null : result.error
+  }
+
+  async function handleSave(item: ReviewItem) {
+    setBusy(true)
+    setFlash(null)
+    const error = await saveOne(item)
+    setItemError(item.id, error)
+    if (error === null) {
+      clearDirty([item.id])
+      setFlash('נשמר.')
+    }
+    setBusy(false)
+  }
+
+  /**
+   * One patch across the whole selection. A pickup window always goes whole —
+   * both ends in one call — because one end alone would have to be checked
+   * against each item's stored other end, and `bulkEdit` is all-or-nothing.
+   */
+  async function applyBulk(patch: { price?: string; categoryName?: string; pickupFrom?: string; pickupTo?: string }) {
+    if (selectedIds.length === 0) return
+    setBusy(true)
+    setErrors([])
+    setFlash(null)
+
+    const result = await bulkEdit(selectedIds, patch)
+    if (!result.ok) {
+      setErrors([result.error])
+      setBusy(false)
+      return
+    }
+
+    setItems((prev) => prev.map((item) => (selected.has(item.id) ? { ...item, ...patch } : item)))
+    setFlash(selectedIds.length === 1 ? 'הפריט עודכן.' : `עודכנו ${selectedIds.length} פריטים.`)
+    setBusy(false)
+  }
+
+  /**
+   * Publishes the selection, saving first what the seller has typed into it:
+   * `publishItems` republishes what is in the database, so an unsaved
+   * headline would otherwise go live as the placeholder it replaced.
+   *
+   * A card that cannot be saved or cannot be published keeps its place with
+   * its own message on it — one missing price must not cost the seller the
+   * other nineteen.
+   */
+  async function handlePublish() {
+    if (selectedIds.length === 0) return
+    setBusy(true)
+    setErrors([])
+    setFlash(null)
+
+    const refusals: Record<string, string> = {}
+    const ready: string[] = []
+
+    for (const item of items) {
+      if (!selected.has(item.id)) continue
+      if (dirty.has(item.id)) {
+        const error = await saveOne(item)
+        if (error !== null) {
+          refusals[item.id] = error
+          continue
+        }
+      }
+      ready.push(item.id)
+    }
+
+    if (ready.length > 0) {
+      const result = await publishItems(ready)
+      for (const refusal of result.refused) refusals[refusal.id] = refusal.error
+    }
+
+    const published = new Set(ready.filter((id) => !(id in refusals)))
+
+    setItems((prev) => prev.filter((item) => !published.has(item.id)))
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const id of published) next.delete(id)
+      return next
+    })
+    clearDirty(published)
+    setItemErrors(refusals)
+    setPublishedHere((count) => count + published.size)
+    setFlash(published.size === 0 ? null : published.size === 1 ? 'פריט אחד פורסם.' : `פורסמו ${published.size} פריטים.`)
+    if (Object.keys(refusals).length > 0) {
+      setErrors(['חלק מהפריטים לא פורסמו. ההסבר מופיע על הכרטיס של כל אחד מהם.'])
+    }
+    setBusy(false)
+  }
+
+  async function handleDiscardSelection() {
+    const doomed = selectedIds
+    if (doomed.length === 0) return
+    setBusy(true)
+    setErrors([])
+    setConfirming(null)
+
+    await discardItems(doomed)
+
+    const gone = new Set(doomed)
+    setItems((prev) => prev.filter((item) => !gone.has(item.id)))
+    setSelected(new Set())
+    clearDirty(gone)
+    setFlash(doomed.length === 1 ? 'הפריט נמחק.' : 'הפריטים שנבחרו נמחקו.')
+    setBusy(false)
+  }
+
+  /**
+   * The whole import, and the only control that reaches a photo which never
+   * got an item (spec §7.3). Leaves for the item list afterwards: there is
+   * nothing left on this screen to look at.
+   */
+  async function handleDiscardBatch() {
+    setBusy(true)
+    setConfirming(null)
+    await discardBatch(batchId)
+    router.push('/admin/items')
+  }
+
+  async function handleRemovePhoto(photoId: string, itemId: string | null) {
+    setBusy(true)
+    setErrors([])
+    const result = await removePhoto(photoId)
+    if (!result.ok) {
+      setErrors([result.error])
+      setBusy(false)
+      return
+    }
+
+    if (itemId === null) setLoose((prev) => prev.filter((photo) => photo.id !== photoId))
+    else {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId ? { ...item, photos: item.photos.filter((photo) => photo.id !== photoId) } : item,
+        ),
+      )
+    }
+    setBusy(false)
+  }
+
+  /**
+   * Moves one photo onto another item of this batch, or onto a brand new one.
+   *
+   * A new card is added here from the same defaults the server creates it
+   * with, and marked unsaved on purpose: publishing saves every unsaved card
+   * first, so what the seller is shown is what gets published even if the
+   * server's carried-forward defaults have drifted from this prediction.
+   */
+  async function handleMove(photoId: string, fromItemId: string, toItemId: string) {
+    setBusy(true)
+    setErrors([])
+    const result = await movePhoto(photoId, toItemId === 'new' ? 'new' : toItemId)
+    if (!result.ok) {
+      setErrors([result.error])
+      setBusy(false)
+      return
+    }
+
+    const destination = result.itemId
+    const photo =
+      fromItemId === ''
+        ? loose.find((candidate) => candidate.id === photoId)
+        : items.find((item) => item.id === fromItemId)?.photos.find((candidate) => candidate.id === photoId)
+
+    if (photo) {
+      if (fromItemId === '') setLoose((prev) => prev.filter((candidate) => candidate.id !== photoId))
+
+      setItems((prev) => {
+        const without = prev.map((item) =>
+          item.id === fromItemId
+            ? { ...item, photos: item.photos.filter((candidate) => candidate.id !== photoId) }
+            : item,
+        )
+        if (without.some((item) => item.id === destination)) {
+          // Appended, never inserted: the first photo of an item is its cover
+          // and a photo dragged over from elsewhere must not become it.
+          return without.map((item) =>
+            item.id === destination ? { ...item, photos: [...item.photos, photo] } : item,
+          )
+        }
+        return [
+          ...without,
+          {
+            id: destination,
+            name: DRAFT_NAME,
+            description: '',
+            price: '',
+            categoryName: defaults.categoryName,
+            pickupFrom: defaults.pickupFrom,
+            pickupTo: defaults.pickupTo,
+            photos: [photo],
+          },
+        ]
+      })
+
+      if (!items.some((item) => item.id === destination)) {
+        setSelected((prev) => new Set(prev).add(destination))
+        setDirty((prev) => new Set(prev).add(destination))
+      }
+    }
+
+    setBusy(false)
+  }
+
+  /**
+   * Groups whatever is still loose in this batch. Reachable only when the
+   * first attempt never ran or hard-failed, which is also why it reloads
+   * rather than merging: the items it creates are the server's to describe.
+   */
+  async function handleCluster() {
+    setBusy(true)
+    setErrors([])
+    const result = await clusterBatchAction(batchId)
+    if (!result.ok) {
+      setErrors([result.error])
+      setBusy(false)
+      return
+    }
+    const query = result.notice === 'NONE' ? '' : `?notice=${result.notice}`
+    window.location.href = `/admin/items/import/${batchId}${query}`
+  }
+
+  const noticeLine =
+    notice === 'OUT_OF_CREDIT'
+      ? 'לא יצרנו שמות ותיאורים אוטומטיים: אין יתרה בחשבון הבינה המלאכותית. כל השאר עובד כרגיל — התמונות קובצו לפי זמן הצילום, ואפשר למלא את הפרטים ולפרסם.'
+      : notice === 'NO_COPY'
+        ? 'לא יצרנו שמות ותיאורים אוטומטיים לייבוא הזה. התמונות קובצו לפי זמן הצילום, ואפשר לתקן את הקיבוץ ולמלא את הפרטים.'
+        : null
+
+  if (items.length === 0 && loose.length === 0) {
+    return (
+      <div className={styles.empty}>
+        <p>
+          {publishedHere > 0
+            ? `סיימנו. מהייבוא הזה ${publishedHere === 1 ? 'פורסם פריט אחד' : `פורסמו ${publishedHere} פריטים`}.`
+            : 'אין פריטים בייבוא הזה.'}
+        </p>
+        <Link href="/admin/items" className="btn btn-dark">
+          לרשימת הפריטים
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {noticeLine && (
+        <div className={notice === 'OUT_OF_CREDIT' ? `${styles.notice} ${styles.noticeWarn}` : styles.notice}>
+          <p>{noticeLine}</p>
+        </div>
+      )}
+
+      {flash && <p className={styles.flash}>{flash}</p>}
+
+      {errors.length > 0 && (
+        <div className={styles.error}>
+          {errors.map((error, i) => (
+            <p key={i}>{error}</p>
+          ))}
+        </div>
+      )}
+
+      {loose.length > 0 && (
+        <div className={styles.loose}>
+          <p>
+            {loose.length === 1
+              ? 'תמונה אחת עדיין לא שויכה לפריט.'
+              : `${loose.length} תמונות עדיין לא שויכו לפריט.`}
+          </p>
+          <div className={styles.strip}>
+            {loose.map((photo) => (
+              <div key={photo.id} className={styles.shot}>
+                <div className={styles.thumb}>
+                  <img src={photoUrl(photo.id)} alt="" style={{ backgroundImage: `url(${photo.lqip})` }} />
+                  <button
+                    type="button"
+                    className={styles.rm}
+                    onClick={() => void handleRemovePhoto(photo.id, null)}
+                    disabled={busy}
+                    aria-label="הסרת התמונה"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <select
+                  className={styles.move}
+                  value=""
+                  disabled={busy}
+                  aria-label="העברת התמונה לפריט"
+                  onChange={(e) => {
+                    const value = e.target.value
+                    e.target.value = ''
+                    if (value !== '') void handleMove(photo.id, '', value)
+                  }}
+                >
+                  <option value="">העברה אל…</option>
+                  {items.map((target, index) => (
+                    <option key={target.id} value={target.id}>
+                      {optionLabel(target, index)}
+                    </option>
+                  ))}
+                  <option value="new">פריט חדש</option>
+                </select>
+              </div>
+            ))}
+          </div>
+          <button type="button" className={styles.act} onClick={() => void handleCluster()} disabled={busy}>
+            קיבוץ התמונות שנותרו לפריטים
+          </button>
+        </div>
+      )}
+
+      <div className={styles.cards}>
+        {items.map((item, index) => {
+          const isSelected = selected.has(item.id)
+          const from = utcDateOrNull(item.pickupFrom)
+          const to = utcDateOrNull(item.pickupTo)
+          return (
+            <article key={item.id} className={isSelected ? `${styles.card} ${styles.cardOn}` : styles.card}>
+              <div className={styles.cardHead}>
+                <label className={styles.check}>
+                  <input type="checkbox" checked={isSelected} onChange={() => toggle(item.id)} />
+                  <span>פריט {index + 1}</span>
+                </label>
+                <span className={styles.count}>{photosLabel(item.photos.length)}</span>
+                {from && to && (
+                  <span className={styles.window}>
+                    איסוף: <PickupWindow from={from} to={to} />
+                  </span>
+                )}
+              </div>
+
+              {item.photos.length === 0 ? (
+                <p className={styles.footerNote}>אין תמונות בפריט הזה. אפשר להעביר אליו תמונה מפריט אחר או למחוק אותו.</p>
+              ) : (
+                <div className={styles.strip}>
+                  {item.photos.map((photo, photoIndex) => (
+                    <div key={photo.id} className={styles.shot}>
+                      <div className={photoIndex === 0 ? `${styles.thumb} ${styles.cover}` : styles.thumb}>
+                        <img src={photoUrl(photo.id)} alt="" style={{ backgroundImage: `url(${photo.lqip})` }} />
+                        <button
+                          type="button"
+                          className={styles.rm}
+                          onClick={() => void handleRemovePhoto(photo.id, item.id)}
+                          disabled={busy}
+                          aria-label="הסרת התמונה"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <select
+                        className={styles.move}
+                        value=""
+                        disabled={busy}
+                        aria-label="העברת התמונה לפריט"
+                        onChange={(e) => {
+                          const value = e.target.value
+                          e.target.value = ''
+                          if (value !== '') void handleMove(photo.id, item.id, value)
+                        }}
+                      >
+                        <option value="">העברה אל…</option>
+                        {items
+                          .map((target, targetIndex) => ({ target, targetIndex }))
+                          .filter(({ target }) => target.id !== item.id)
+                          .map(({ target, targetIndex }) => (
+                            <option key={target.id} value={target.id}>
+                              {optionLabel(target, targetIndex)}
+                            </option>
+                          ))}
+                        <option value="new">פריט חדש</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className={styles.fields}>
+                <div>
+                  <label className="lbl" htmlFor={`name-${item.id}`}>
+                    שם הפריט
+                  </label>
+                  <input
+                    id={`name-${item.id}`}
+                    className="fld"
+                    value={item.name}
+                    onChange={(e) => editItem(item.id, { name: e.target.value })}
+                    placeholder="מנורת קריאה"
+                  />
+                </div>
+                <div>
+                  <label className="lbl" htmlFor={`desc-${item.id}`}>
+                    תיאור
+                  </label>
+                  <textarea
+                    id={`desc-${item.id}`}
+                    className="fld"
+                    value={item.description}
+                    onChange={(e) => editItem(item.id, { description: e.target.value })}
+                    placeholder="שתיים־שלוש שורות, כולל פגמים"
+                  />
+                </div>
+                <div className={styles.pair}>
+                  <div>
+                    <label className="lbl" htmlFor={`price-${item.id}`}>
+                      מחיר
+                    </label>
+                    <div className={styles.money}>
+                      <span>₪</span>
+                      <input
+                        id={`price-${item.id}`}
+                        className="fld"
+                        inputMode="decimal"
+                        value={item.price}
+                        onChange={(e) => editItem(item.id, { price: e.target.value })}
+                        placeholder="90"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="lbl" htmlFor={`category-${item.id}`}>
+                      קטגוריה
+                    </label>
+                    <input
+                      id={`category-${item.id}`}
+                      className="fld"
+                      value={item.categoryName}
+                      onChange={(e) => editItem(item.id, { categoryName: e.target.value })}
+                      list={categoryListId}
+                    />
+                  </div>
+                </div>
+                <div className={styles.pair}>
+                  <div>
+                    <label className="lbl" htmlFor={`from-${item.id}`}>
+                      איסוף מתאריך
+                    </label>
+                    <input
+                      id={`from-${item.id}`}
+                      className="fld"
+                      type="date"
+                      value={item.pickupFrom}
+                      onChange={(e) => editItem(item.id, { pickupFrom: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="lbl" htmlFor={`to-${item.id}`}>
+                      עד תאריך
+                    </label>
+                    <input
+                      id={`to-${item.id}`}
+                      className="fld"
+                      type="date"
+                      value={item.pickupTo}
+                      onChange={(e) => editItem(item.id, { pickupTo: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.cardFoot}>
+                <button
+                  type="button"
+                  className={styles.act}
+                  onClick={() => void handleSave(item)}
+                  disabled={busy || !dirty.has(item.id)}
+                >
+                  {dirty.has(item.id) ? 'שמירת הפריט' : 'נשמר'}
+                </button>
+                {itemErrors[item.id] && <p className={styles.cardError}>{itemErrors[item.id]}</p>}
+              </div>
+            </article>
+          )
+        })}
+      </div>
+
+      <datalist id={categoryListId}>
+        {categories.map((category) => (
+          <option key={category} value={category} />
+        ))}
+      </datalist>
+
+      {items.length > 0 && (
+        <div className={styles.bar}>
+          <div className={styles.barRow}>
+            <span className={styles.barCount}>
+              נבחרו {selectedIds.length} מתוך {items.length}
+            </span>
+            <button
+              type="button"
+              className={styles.act}
+              onClick={() => setSelected(new Set(items.map((item) => item.id)))}
+              disabled={busy || selectedIds.length === items.length}
+            >
+              בחירת הכול
+            </button>
+            <button
+              type="button"
+              className={styles.act}
+              onClick={() => setSelected(new Set())}
+              disabled={busy || selectedIds.length === 0}
+            >
+              ניקוי הבחירה
+            </button>
+            <span className={styles.barSpace} />
+            {confirming === 'selection' ? (
+              <>
+                <span className={styles.barCount}>
+                  {selectedIds.length === 1 ? 'למחוק את הפריט שנבחר?' : `למחוק ${selectedIds.length} פריטים?`}
+                </span>
+                <button
+                  type="button"
+                  className={`${styles.act} ${styles.danger}`}
+                  onClick={() => void handleDiscardSelection()}
+                  disabled={busy}
+                >
+                  כן, למחוק
+                </button>
+                <button type="button" className={styles.act} onClick={() => setConfirming(null)} disabled={busy}>
+                  ביטול
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={`${styles.act} ${styles.danger}`}
+                onClick={() => setConfirming('selection')}
+                disabled={busy || selectedIds.length === 0}
+              >
+                מחיקת הנבחרים
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-accent"
+              onClick={() => void handlePublish()}
+              disabled={busy || selectedIds.length === 0}
+            >
+              {busy ? 'רגע…' : 'פרסום הנבחרים'}
+            </button>
+          </div>
+
+          <details className={styles.bulkEdit}>
+            <summary>קביעת מחיר, קטגוריה ותאריכים לכל הנבחרים</summary>
+            <div className={styles.bulkFields}>
+              <div className={styles.bulkField}>
+                <label className="lbl" htmlFor="bulk-price">
+                  מחיר לכולם
+                </label>
+                <div className={styles.money}>
+                  <span>₪</span>
+                  <input
+                    id="bulk-price"
+                    className="fld"
+                    inputMode="decimal"
+                    value={bulkPrice}
+                    onChange={(e) => setBulkPrice(e.target.value)}
+                    placeholder="90"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                className={styles.act}
+                onClick={() => void applyBulk({ price: bulkPrice })}
+                disabled={busy || selectedIds.length === 0}
+              >
+                החלת המחיר
+              </button>
+            </div>
+            <div className={styles.bulkFields}>
+              <div className={styles.bulkField}>
+                <label className="lbl" htmlFor="bulk-category">
+                  קטגוריה לכולם
+                </label>
+                <input
+                  id="bulk-category"
+                  className="fld"
+                  value={bulkCategory}
+                  onChange={(e) => setBulkCategory(e.target.value)}
+                  list={categoryListId}
+                />
+              </div>
+              <button
+                type="button"
+                className={styles.act}
+                onClick={() => void applyBulk({ categoryName: bulkCategory.trim() })}
+                disabled={busy || selectedIds.length === 0}
+              >
+                החלת הקטגוריה
+              </button>
+            </div>
+            <div className={styles.bulkFields}>
+              <div className={styles.bulkField}>
+                <label className="lbl" htmlFor="bulk-from">
+                  חלון איסוף לכולם
+                </label>
+                <div className={styles.bulkDates}>
+                  <input
+                    id="bulk-from"
+                    className="fld"
+                    type="date"
+                    value={bulkFrom}
+                    onChange={(e) => setBulkFrom(e.target.value)}
+                    aria-label="איסוף מתאריך לכל הנבחרים"
+                  />
+                  <input
+                    className="fld"
+                    type="date"
+                    value={bulkTo}
+                    onChange={(e) => setBulkTo(e.target.value)}
+                    aria-label="עד תאריך לכל הנבחרים"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                className={styles.act}
+                // Both ends, always: a window is validated whole, and one end
+                // alone would have to be checked against each item's stored
+                // other end — which this call has no way to report per item.
+                onClick={() => void applyBulk({ pickupFrom: bulkFrom, pickupTo: bulkTo })}
+                disabled={busy || selectedIds.length === 0}
+              >
+                החלת התאריכים
+              </button>
+            </div>
+          </details>
+        </div>
+      )}
+
+      <div className={styles.footer}>
+        {confirming === 'batch' ? (
+          <>
+            <span className={styles.barCount}>למחוק את כל הייבוא, כולל התמונות?</span>
+            <button
+              type="button"
+              className={`${styles.act} ${styles.danger}`}
+              onClick={() => void handleDiscardBatch()}
+              disabled={busy}
+            >
+              כן, למחוק הכול
+            </button>
+            <button type="button" className={styles.act} onClick={() => setConfirming(null)} disabled={busy}>
+              ביטול
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className={`${styles.act} ${styles.danger}`}
+              onClick={() => setConfirming('batch')}
+              disabled={busy}
+            >
+              מחיקת כל הייבוא
+            </button>
+            <span className={styles.footerNote}>
+              מוחק את כל הפריטים מהייבוא הזה ואת כל התמונות שלו, גם כאלה שלא שויכו לפריט.
+            </span>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Hebrew counts one thing by name, not by numeral: "1 תמונות" is wrong in a way a seller notices. */
+function photosLabel(count: number): string {
+  return count === 1 ? 'תמונה אחת' : `${count} תמונות`
+}
+
+/** How one item is named in a "move to…" menu: its place in the batch, plus its headline once it has one. */
+function optionLabel(item: ReviewItem, index: number): string {
+  const name = item.name.trim()
+  return name === '' || name === DRAFT_NAME ? `פריט ${index + 1}` : `פריט ${index + 1} · ${name}`
+}
+
+/**
+ * An `<input type="date">` value as the UTC-midnight Date `<PickupWindow>`
+ * reads. Deliberately a local copy of `parseDate` rather than an import of
+ * it: that one lives in src/lib/admin/items.ts, which pulls Prisma, and this
+ * is a client component.
+ */
+function utcDateOrNull(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+  const date = new Date(`${value}T00:00:00Z`)
+  return Number.isNaN(date.getTime()) ? null : date
+}

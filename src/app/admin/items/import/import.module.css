@@ -1,0 +1,441 @@
+/*
+ * The AI import: the drop-and-upload step (ImportDrop.tsx) and the review
+ * screen it lands on ([batchId]/ImportReview.tsx). Visual language is
+ * docs/design/mockups/03-admin-items.html — the same #FAF8F6 sub-panels,
+ * 999px pills and 13-14px radii as the bulk queue it replaces. Primitives
+ * that already exist globally (.btn, .fld, .lbl) are reused rather than
+ * redefined, and the drop zone itself reuses admin.module.css.
+ *
+ * Every offset here is a LOGICAL property. The page is dir="rtl", where
+ * inset-inline-start is the RIGHT physical edge; a physical `left` or `right`
+ * would put a remove button or a "ראשי" badge on the wrong side of every
+ * thumbnail, which is exactly how a select chevron once shipped mirrored.
+ */
+
+/* ── the drop-and-upload step ───────────────────────────── */
+
+.uploading {
+  background: #faf8f6;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+}
+.uploading p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.uploading p + p {
+  margin-block-start: 6px;
+}
+.uploadNote {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+/* ── notices ────────────────────────────────────────────────
+   The one line clusterBatch's ImportNotice becomes (spec §7.4). Calm, never
+   an alarm: the photos are safe and everything except the copy still works. */
+.notice {
+  background: #faf8f6;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  margin-block-end: 16px;
+}
+.notice p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.notice p + p {
+  margin-block-start: 6px;
+}
+.noticeWarn {
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.noticeWarn p {
+  color: #9b3a20;
+}
+
+.flash {
+  background: #e4f5e9;
+  border-radius: var(--r-md);
+  padding: 11px 14px;
+  margin-block-end: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f7a3d;
+}
+
+.error {
+  background: var(--accent-soft);
+  border-radius: var(--r-md);
+  padding: 11px 14px;
+  margin-block-end: 14px;
+}
+.error p {
+  margin: 0;
+  font-size: 13.5px;
+  color: #9b3a20;
+  line-height: 1.5;
+}
+.error p + p {
+  margin-block-start: 6px;
+}
+
+/* ── one proposed item ──────────────────────────────────── */
+
+.cards {
+  display: grid;
+  /* min(420px, 100%) rather than a bare 420px: auto-fill honours the minimum
+     literally, so a bare one overflows a 320px phone by a hundred pixels. */
+  grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.card {
+  background: #faf8f6;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.cardOn {
+  border-color: var(--ink);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  /* A genuinely tappable row, not a 13px box on its own. */
+  min-height: 40px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  flex: none;
+}
+.count {
+  margin-inline-start: auto;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.window {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  flex-basis: 100%;
+}
+
+/* ── the photo strip ────────────────────────────────────────
+   Scrolls inside itself: a twelve-shot cluster must never widen the page. */
+.strip {
+  display: flex;
+  gap: 9px;
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  padding-block-end: 4px;
+}
+.shot {
+  flex: none;
+  width: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.thumb {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #eee9e4;
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background-size: cover;
+}
+/*
+ * Always visible, never hover-revealed. A hover-revealed control on a
+ * thumbnail is invisible-but-tappable on a phone, and a phone is where the
+ * seller does this — they photographed the sale on it.
+ */
+.rm {
+  position: absolute;
+  inset-block-start: 5px;
+  inset-inline-start: 5px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(27, 25, 23, 0.72);
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.rm:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.cover::after {
+  content: 'ראשי';
+  position: absolute;
+  inset-block-end: 5px;
+  inset-inline-end: 5px;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.move {
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  /* Native appearance on purpose — a custom chevron is one more thing to put
+     on the wrong physical edge, and the browser already places its own
+     correctly for dir="rtl". */
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink-2);
+  padding-inline: 6px;
+  max-width: 100%;
+}
+
+/* ── the editable fields ────────────────────────────────── */
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fields textarea {
+  resize: vertical;
+  min-height: 72px;
+  line-height: 1.5;
+}
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 700px) {
+  /* Two <input type="date"> side by side are unreadable on a phone. */
+  .pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+/*
+ * The shekel sign sits beside the field rather than inside its value, exactly
+ * as it does in ItemForm — "₪ 90" typed into an RTL input renders as "90 ₪",
+ * and the approved mockups put the sign first.
+ */
+.money {
+  position: relative;
+}
+.money input {
+  padding-inline-start: 32px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.money span {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 14px;
+  transform: translateY(-50%);
+  color: var(--ink-3);
+  font-size: 16px;
+  pointer-events: none;
+}
+
+.cardFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cardError {
+  margin: 0;
+  background: var(--accent-soft);
+  color: #9b3a20;
+  border-radius: 12px;
+  padding: 8px 11px;
+  font-size: 13px;
+  flex-basis: 100%;
+}
+
+/* ── the bulk bar ───────────────────────────────────────────
+   Sticky to the block-end edge so it is under the seller's thumb after a
+   long scroll instead of back at the top of a sixty-photo import. */
+.bar {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 5;
+  margin-block-start: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.barRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.barCount {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.barSpace {
+  margin-inline-start: auto;
+}
+
+.bulkEdit summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  /* A summary is the disclosure's whole tap target. */
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bulkFields {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  /* flex-end, not end: autoprefixer warns that bare `end` has mixed support. */
+  align-items: flex-end;
+  padding-block-start: 10px;
+}
+.bulkField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* min-width:0 is what stops a 140px basis from overflowing a 320px screen. */
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.bulkDates {
+  display: flex;
+  gap: 8px;
+}
+.bulkDates input {
+  min-width: 0;
+}
+@media (max-width: 560px) {
+  /* A phone gets one control per row. Two <input type="date"> side by side
+     have an intrinsic minimum of their own that no percentage width can talk
+     them out of — measured at 398px of page on a 320px screen. */
+  .bulkField {
+    flex: 1 1 100%;
+  }
+  .bulkDates {
+    flex-direction: column;
+  }
+}
+
+.act {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 15px;
+  min-height: 40px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.act:hover:not(:disabled) {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+.act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.danger {
+  color: #9b3a20;
+}
+.danger:hover:not(:disabled) {
+  border-color: #9b3a20;
+  color: #9b3a20;
+}
+
+/* ── loose photos and the whole-import discard ──────────── */
+
+.loose {
+  background: #faf8f6;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px;
+  margin-block-end: 16px;
+}
+.loose p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-block-start: 22px;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--line);
+}
+.footerNote {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.empty {
+  text-align: center;
+  padding-block: 34px;
+}
+.empty p {
+  font-size: 15px;
+  color: var(--ink-2);
+  margin: 0 0 16px;
+}
