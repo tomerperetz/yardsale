@@ -267,7 +267,7 @@ over Nixpacks and silently stop following the setup described here, so don't.
   "build": { "builder": "NIXPACKS" },
   "deploy": {
     "preDeployCommand": "npx prisma migrate deploy && npx tsx prisma/seed.ts",
-    "startCommand": "node .next/standalone/server.js",
+    "startCommand": "npm start",
     "restartPolicyType": "ON_FAILURE"
   }
 }
@@ -279,8 +279,17 @@ Nixpacks runs `npm install` and `npm run build` (which also runs the
 and skipping it means the deployed app renders HTML with every JavaScript
 chunk 404ing and nothing on the page clickable). `preDeployCommand` then
 applies any pending migrations and runs the idempotent seed before the new
-version takes traffic, and `startCommand` runs the standalone server
-directly.
+version takes traffic, and `startCommand` runs `npm start`, which is
+`prisma migrate deploy && node .next/standalone/server.js`.
+
+The migration appears twice on purpose. `preDeployCommand` is the documented
+Railway hook, but it is not always honoured — on this project's own first
+deploy Railway ran the Nixpacks default `npm start` and never read
+`railway.json` at all, so the migrations never ran and every page that touches
+the database returned 500 with `P2021: table does not exist`. Running them
+from `npm start` too costs nothing (`prisma migrate deploy` prints "No pending
+migrations to apply." on a current database) and does not depend on the
+platform reading a config file.
 
 To set the project up on Railway:
 
