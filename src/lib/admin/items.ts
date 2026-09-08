@@ -172,8 +172,22 @@ export async function updateItem(id: string, input: ItemInput): Promise<ItemResu
 // two definitions drifting apart without anyone noticing.
 const SELLABLE: readonly ItemStatus[] = SELLABLE_STATUSES
 
-/** An order that still has a claim on its items. Cancelled and expired ones do not. */
-const LIVE_ORDER_STATUSES = [OrderStatus.PENDING_PAYMENT, OrderStatus.CLAIMED_PAID, OrderStatus.PAID]
+/**
+ * An order that still has a claim on its items. Cancelled and expired ones do
+ * not. Exported because the import screen's `publishItems` has to ask the same
+ * question of the same orders — a second list that fell behind this one would
+ * let a bulk publish move an item underneath a live order.
+ */
+export const LIVE_ORDER_STATUSES = [OrderStatus.PENDING_PAYMENT, OrderStatus.CLAIMED_PAID, OrderStatus.PAID]
+
+/**
+ * The two refusals an item under an order's claim gets, wherever it is asked to
+ * move. Shared with `publishItems`, which enforces the same rule from the
+ * import screen: as constants rather than as two copies of the text, so that
+ * rewording one cannot leave the other saying something else.
+ */
+export const HELD_BY_ORDER = 'הפריט שמור להזמנה פעילה. בטלו את ההזמנה כדי לשחרר אותו.'
+export const SOLD_THROUGH_SHOP = 'הפריט נמכר דרך האתר ושייך להזמנה. אי אפשר לשנות את הסטטוס שלו.'
 
 /**
  * Moves a published item between the three states its seller controls: on the
@@ -215,10 +229,10 @@ export async function setItemStatus(id: string, status: SellableStatus): Promise
       return { ok: false as const, error: 'הפריט עדיין טיוטה. פרסמו אותו קודם.' }
     }
     if (item.status === ItemStatus.RESERVED) {
-      return { ok: false as const, error: 'הפריט שמור להזמנה פעילה. בטלו את ההזמנה כדי לשחרר אותו.' }
+      return { ok: false as const, error: HELD_BY_ORDER }
     }
     if (item.orderItems.length > 0) {
-      return { ok: false as const, error: 'הפריט נמכר דרך האתר ושייך להזמנה. אי אפשר לשנות את הסטטוס שלו.' }
+      return { ok: false as const, error: SOLD_THROUGH_SHOP }
     }
 
     const moved = await tx.item.updateMany({ where: { id, status: item.status }, data: { status } })

@@ -13,6 +13,9 @@ import {
   normalizeCategoryName,
   parseDate,
   updateItem,
+  HELD_BY_ORDER,
+  LIVE_ORDER_STATUSES,
+  SOLD_THROUGH_SHOP,
 } from '@/lib/admin/items'
 import { carriedForward, clusterBatch, type ClusterBatchResult } from '@/lib/import/batch'
 
@@ -41,6 +44,27 @@ type BulkPatch = { price?: string; categoryName?: string; pickupFrom?: string; p
 
 const PHOTO_MISSING = 'התמונה לא נמצאה.'
 const ITEM_MISSING = 'הפריט לא נמצא.'
+
+/**
+ * An item the seller marked sold at the door, with no order behind it.
+ * `setItemStatus` lets them undo that from the item's own page, which is why
+ * this says where to go rather than just refusing.
+ */
+const MARKED_SOLD = 'הפריט מסומן כנמכר. אפשר להחזיר אותו למכירה מדף הפריט.'
+
+/**
+ * What an item priced at 0 is told, and it has to be true in both directions.
+ *
+ * `clusterBatch` creates every imported draft at 0 as "the seller has not
+ * priced this yet" (spec §1.3 leaves every price to them), so publishing 0
+ * through would put a whole import on the shop for free — the refusal stays.
+ * But `bulkEdit` accepts '0', so a seller who deliberately made something free
+ * lands here too, and telling them their price is invalid would be a lie about
+ * input they chose. So: say what publishing needs, and where a genuinely free
+ * item can still be published, which is the single-item form — `updateItem`
+ * has no such rule and takes 0 as a price like any other.
+ */
+const UNPRICED = 'צריך לקבוע מחיר לפני הפרסום. פריט שניתן בחינם אפשר לפרסם מדף הפריט.'
 
 /**
  * Groups a finished upload batch into DRAFT items and writes their copy.
@@ -210,6 +234,15 @@ export async function bulkEdit(itemIds: string[], patch: BulkPatch): Promise<Edi
  * (spec §7.3) and what gives a draft the proper slug for the name it is being
  * published under.
  *
+ * What `updateItem` does NOT do is ask whether publishing is allowed at all:
+ * `publish: true` sets AVAILABLE unconditionally, and an item's own status is
+ * the one thing this screen can still be looking at while the shop has moved
+ * on. An imported item keeps its `importBatchId` after it is published, so the
+ * review screen goes on listing it, and a second pass over the selection would
+ * otherwise put an item that has since sold back on the shop to be bought
+ * again while its OrderItem still points at it. `setItemStatus` refuses that
+ * transition and so does this, in the same order and with the same words.
+ *
  * Sequential on purpose: `updateItem` creates the category it is given if it
  * is new, and a selection sharing one new category would race itself into a
  * unique-constraint failure if these ran together.
@@ -227,7 +260,11 @@ export async function publishItems(itemIds: string[]): Promise<PublishResult> {
         priceAgorot: true,
         pickupFrom: true,
         pickupTo: true,
+        status: true,
         category: { select: { name: true } },
+        // Cancelled and expired orders have released their claim, so an item
+        // that appears only on those is the seller's to publish again.
+        orderItems: { where: { order: { status: { in: LIVE_ORDER_STATUSES } } }, select: { id: true }, take: 1 },
       },
     })
     if (!item) {
@@ -235,15 +272,27 @@ export async function publishItems(itemIds: string[]): Promise<PublishResult> {
       continue
     }
 
+    // Before anything else: an item an order is counting on, or one the seller
+    // has already called sold, must not move underneath either of them —
+    // whatever else may also be wrong with it.
+    const blocked = refusedByStatus(item)
+    if (blocked) {
+      refused.push({ id, error: blocked })
+      continue
+    }
+
+    if (item.priceAgorot === 0) {
+      refused.push({ id, error: UNPRICED })
+      continue
+    }
+
     const result = await updateItem(id, {
       name: item.name,
       description: item.description,
-      // An imported draft is created at 0 agorot as "the seller has not priced
-      // this yet" — spec §1.3 leaves every price to them and nothing else
-      // writes one. Handed on as no price at all rather than as free, so the
-      // item is refused with `updateItem`'s own message instead of going on
-      // the shop at ₪0 because a placeholder happened to parse.
-      price: item.priceAgorot === 0 ? '' : String(item.priceAgorot / 100),
+      // Never 0 by here — that is refused above with something a seller can
+      // act on, rather than handed to `updateItem` as an empty string for the
+      // sake of borrowing its 'מחיר לא תקין.'
+      price: String(item.priceAgorot / 100),
       categoryName: item.category.name,
       pickupFrom: dateInput(item.pickupFrom),
       pickupTo: dateInput(item.pickupTo),
@@ -318,44 +367,44 @@ export async function discardBatch(batchId: string): Promise<DiscardBatchResult>
         select: { id: true, status: true, orderItems: { select: { id: true }, take: 1 } },
       })
 
-      const kept = new Set(
-        items
-          .filter(
-            (item) =>
-              item.status === ItemStatus.RESERVED ||
-              item.status === ItemStatus.SOLD ||
-              item.orderItems.length > 0,
-          )
-          .map((item) => item.id),
-      )
-      const doomed = items.filter((item) => !kept.has(item.id)).map((item) => item.id)
+      const keptCount = items.length - items.filter(deletable).length
+      const doomed = new Set(items.filter(deletable).map((item) => item.id))
 
       // Read before anything deletes a row. Files are keyed by photo, so once
       // these rows are gone — and `Photo.itemId` cascades, so deleting the
       // items alone would take them — nothing ties a file to this batch, and a
       // lookup afterwards would find none and orphan every width forever.
       const candidates = await tx.photo.findMany({
-        where: { OR: [{ importBatchId: batchId }, { itemId: { in: doomed } }] },
+        where: { OR: [{ importBatchId: batchId }, { itemId: { in: [...doomed] } }] },
         select: { id: true, itemId: true },
       })
 
-      // Filtered here rather than in the query: a photo of a kept item must
-      // survive even though it carries the batch id, and expressing "not one
-      // of these items, and also every photo with no item at all" as a where
-      // clause over a nullable column is exactly where an unattached photo
-      // silently drops out of the sweep this function exists for.
+      // An allowlist, not a denylist: a photo goes only if it has no item at
+      // all, or its item is going with it. Asking instead which items are
+      // being *kept* is subtly wrong, because it treats any item that is not
+      // on that list as gone — including one outside this batch entirely. A
+      // photo carries its batch id for life, so one moved onto an item from
+      // another drop still looks like this batch's, and deleting its row and
+      // files would strip a photo off an item still on the shop with nothing
+      // failing. Today's move menu only offers in-batch items; that is the UI
+      // keeping a promise, and this must not be the place that depends on it.
+      //
+      // Filtered here rather than in the query for the other half of the same
+      // problem: expressing "and also every photo with no item at all" as a
+      // where clause over a nullable column is exactly where an unattached
+      // photo drops out of the sweep this function exists for.
       const photoIds = candidates
-        .filter((photo) => photo.itemId === null || !kept.has(photo.itemId))
+        .filter((photo) => photo.itemId === null || doomed.has(photo.itemId))
         .map((photo) => photo.id)
 
       await tx.photo.deleteMany({ where: { id: { in: photoIds } } })
-      await tx.item.deleteMany({ where: { id: { in: doomed } } })
+      await tx.item.deleteMany({ where: { id: { in: [...doomed] } } })
 
-      if (kept.size > 0) {
-        console.error('[import] discarding batch', batchId, 'kept', kept.size, 'item(s) an order is counting on')
+      if (keptCount > 0) {
+        console.error('[import] discarding batch', batchId, 'kept', keptCount, 'item(s) an order is counting on')
       }
 
-      return { items: doomed.length, photoIds }
+      return { items: doomed.size, photoIds }
     },
     // A sixty-photo batch is sixty rows plus its items, and the default 5s is
     // a tight budget for that on a database that is not on this machine.
@@ -368,6 +417,33 @@ export async function discardBatch(batchId: string): Promise<DiscardBatchResult>
 
   revalidatePath('/admin/items')
   return { ok: true, items: removed.items, photos: removed.photoIds.length }
+}
+
+/**
+ * Whether the batch discard may take this item — `deleteItem`'s rule, restated
+ * because the sweep deletes in bulk rather than one row at a time. An item that
+ * has since been sold or ordered is not part of the leak the discard is for,
+ * and taking one would fail the whole sweep on a foreign key.
+ */
+function deletable(item: { status: ItemStatus; orderItems: { id: string }[] }): boolean {
+  return item.status !== ItemStatus.RESERVED && item.status !== ItemStatus.SOLD && item.orderItems.length === 0
+}
+
+/**
+ * Why this item may not go on the shop, or null if nothing stops it.
+ *
+ * The order is `setItemStatus`'s, which is what makes the messages match case
+ * for case: a RESERVED item is mid hold and hears about the hold, an item on a
+ * live order was sold through the shop and hears about the order, and only an
+ * item the seller marked sold with no order behind it gets the third message —
+ * the one `setItemStatus` has no need for, because it is the transition that
+ * undoes exactly this.
+ */
+function refusedByStatus(item: { status: ItemStatus; orderItems: { id: string }[] }): string | null {
+  if (item.status === ItemStatus.RESERVED) return HELD_BY_ORDER
+  if (item.orderItems.length > 0) return SOLD_THROUGH_SHOP
+  if (item.status === ItemStatus.SOLD) return MARKED_SOLD
+  return null
 }
 
 /** A stored pickup date as the `<input type="date">` string `parseDate` reads back. */

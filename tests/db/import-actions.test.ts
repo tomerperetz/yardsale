@@ -293,6 +293,16 @@ describe('bulkEdit', () => {
   })
 })
 
+/**
+ * The refusals a seller reads off the card. Stated here as literals rather than
+ * imported from the implementation, so a reworded message has to be rewritten
+ * in both places by someone who looked at it.
+ */
+const UNPRICED = 'צריך לקבוע מחיר לפני הפרסום. פריט שניתן בחינם אפשר לפרסם מדף הפריט.'
+const HELD = 'הפריט שמור להזמנה פעילה. בטלו את ההזמנה כדי לשחרר אותו.'
+const ORDERED = 'הפריט נמכר דרך האתר ושייך להזמנה. אי אפשר לשנות את הסטטוס שלו.'
+const MARKED_SOLD = 'הפריט מסומן כנמכר. אפשר להחזיר אותו למכירה מדף הפריט.'
+
 describe('publishItems', () => {
   it('publishes the items it can and reports the ones it cannot', async () => {
     // One incomplete item must not cost the seller the whole publish: they
@@ -306,7 +316,7 @@ describe('publishItems', () => {
     expect(result.ok).toBe(true)
     expect(result.published).toBe(1)
     expect(result.refused).toEqual([
-      { id: unpriced.id, error: 'מחיר לא תקין.' },
+      { id: unpriced.id, error: UNPRICED },
       { id: unnamed.id, error: 'צריך שם לפריט.' },
     ])
 
@@ -341,6 +351,74 @@ describe('publishItems', () => {
 
     expect(result.published).toBe(1)
     expect(result.refused).toEqual([{ id: 'no-such-item', error: 'הפריט לא נמצא.' }])
+  })
+
+  it('will not put an item sold through the shop back on it', async () => {
+    // The double-sell this project fought through in its original build,
+    // arriving by a new door: an imported item keeps its importBatchId after
+    // publishing, so the review screen goes on listing it, and a second
+    // "publish selection" over a since-sold item would flip it back to
+    // AVAILABLE while its OrderItem still points at it. `setItemStatus`
+    // refuses exactly this transition; publishing must too.
+    const sold = await makeDraft({ name: 'ספה', priceAgorot: 10000, status: ItemStatus.SOLD })
+    const ready = await makeDraft({ name: 'מנורה', priceAgorot: 20000 })
+    await makeOrder([sold.id], { status: OrderStatus.PAID })
+
+    const result = await publishItems([sold.id, ready.id])
+
+    expect(result.published).toBe(1)
+    expect(result.refused).toEqual([{ id: sold.id, error: ORDERED }])
+    expect((await db.item.findUnique({ where: { id: sold.id } }))?.status).toBe(ItemStatus.SOLD)
+    expect((await db.item.findUnique({ where: { id: ready.id } }))?.status).toBe(ItemStatus.AVAILABLE)
+  })
+
+  it('will not publish an item a live hold is counting on', async () => {
+    const held = await makeDraft({ name: 'אופניים', priceAgorot: 30000, status: ItemStatus.RESERVED })
+    await makeOrder([held.id], { status: OrderStatus.PENDING_PAYMENT })
+
+    const result = await publishItems([held.id])
+
+    expect(result.published).toBe(0)
+    expect(result.refused).toEqual([{ id: held.id, error: HELD }])
+    expect((await db.item.findUnique({ where: { id: held.id } }))?.status).toBe(ItemStatus.RESERVED)
+  })
+
+  it('will not publish an item the seller marked sold by hand', async () => {
+    // No order at all — sold at the door. The seller said it is gone, and a
+    // bulk publish must not quietly contradict them.
+    const sold = await makeDraft({ name: 'מיקסר', priceAgorot: 15000, status: ItemStatus.SOLD })
+
+    const result = await publishItems([sold.id])
+
+    expect(result.published).toBe(0)
+    expect(result.refused).toEqual([{ id: sold.id, error: MARKED_SOLD }])
+    expect((await db.item.findUnique({ where: { id: sold.id } }))?.status).toBe(ItemStatus.SOLD)
+  })
+
+  it('publishes an item whose only order was cancelled', async () => {
+    // A cancelled order has released its claim — the same rule setItemStatus
+    // applies, so an over-broad guard would strand the item off the shop.
+    const item = await makeDraft({ name: 'כורסה', priceAgorot: 40000, status: ItemStatus.AVAILABLE })
+    await makeOrder([item.id], { status: OrderStatus.CANCELLED })
+
+    const result = await publishItems([item.id])
+
+    expect(result.published).toBe(1)
+    expect(result.refused).toEqual([])
+  })
+
+  it('tells an unpriced item what to do about it, instead of calling the price invalid', async () => {
+    // bulkEdit accepts '0', so a seller can deliberately set a free item and
+    // then be told their price is "invalid". Both halves of this have to be
+    // true for the seller: publishing here needs a price, and a genuinely
+    // free item still has somewhere to go.
+    const free = await makeDraft({ name: 'ארגז ספרים', priceAgorot: 0 })
+
+    expect(await bulkEdit([free.id], { price: '0' })).toEqual({ ok: true })
+
+    const result = await publishItems([free.id])
+    expect(result.refused).toEqual([{ id: free.id, error: UNPRICED }])
+    expect((await db.item.findUnique({ where: { id: free.id } }))?.status).toBe(ItemStatus.DRAFT)
   })
 })
 
@@ -436,6 +514,28 @@ describe('discardBatch', () => {
 
     expect(await db.item.findUnique({ where: { id: discarded.id } })).toBeNull()
     expect(existsSync(photoDir(discardedPhoto.id))).toBe(false)
+  })
+
+  it('leaves a batch photo that now belongs to an item outside the batch', async () => {
+    // The sweep may only take a photo whose item is going with it. A photo
+    // carries its batch id for life, so one moved onto an item from another
+    // drop still looks like this batch's — and deleting its row and files
+    // would take a photo off an item that is still on the shop, with nothing
+    // failing. Today's move menu only offers in-batch items; that is the UI
+    // keeping a promise, not an invariant, so the filter must not rely on it.
+    const outside = await makeDraft({ batchId: null, status: ItemStatus.AVAILABLE })
+    const moved = await makePhoto({ itemId: outside.id })
+    const mine = await makeDraft()
+    const minePhoto = await makePhoto({ itemId: mine.id })
+
+    expect(await discardBatch(BATCH)).toEqual({ ok: true, items: 1, photos: 1 })
+
+    expect(await db.item.findUnique({ where: { id: outside.id } })).not.toBeNull()
+    expect(await db.photo.findUnique({ where: { id: moved.id } })).not.toBeNull()
+    expect(existsSync(photoDir(moved.id))).toBe(true)
+
+    expect(await db.item.findUnique({ where: { id: mine.id } })).toBeNull()
+    expect(existsSync(photoDir(minePhoto.id))).toBe(false)
   })
 
   it('reports nothing for a batch that does not exist', async () => {
