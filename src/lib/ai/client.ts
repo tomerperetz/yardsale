@@ -153,8 +153,14 @@ function errorText(err: unknown): string {
  * would happily certify that every photo appears exactly once while every
  * index addressed the wrong one, and every seller would get every photo on
  * the wrong product with nothing in the output to notice it. So the image
- * blocks and the ids are both derived here, from `photos`, and no index ever
- * leaves this function.
+ * blocks and the ids are both derived here, from `photos`, in the same two
+ * lines and before the request goes out, and no index ever leaves this
+ * function.
+ *
+ * `photos` belongs to the caller and stays writable for as long as the call
+ * is in flight, so deriving the ids after the `await` would leave the whole
+ * guarantee resting on nobody touching their own array for the seconds the
+ * model takes to answer. Snapshotting both first makes it structural.
  *
  * Never throws. `FAILED` covers both a call that errored and a response that
  * did not account for the photos; either way the caller falls back to
@@ -165,6 +171,12 @@ export async function clusterPhotos(photos: ClusterPhoto[]): Promise<AiResult<st
   if (anthropic === null) return { ok: false, reason: 'NO_KEY' }
   // Not a failure and not worth a call: no photos is a grouping of no groups.
   if (photos.length === 0) return { ok: true, value: [] }
+
+  // Both derivations, adjacent and ahead of the await. index i of `blocks` and
+  // index i of `ids` are the same photo, and stay that way whatever the caller
+  // does to `photos` while the model is thinking.
+  const blocks = photos.map((photo) => imageBlock(photo.webp))
+  const ids = photos.map((photo) => photo.id)
 
   let raw: unknown
   try {
@@ -177,12 +189,9 @@ export async function clusterPhotos(photos: ClusterPhoto[]): Promise<AiResult<st
       messages: [
         {
           role: 'user',
-          // The images carry their own numbering: index i is photos[i], which
+          // The images carry their own numbering: index i is blocks[i], which
           // is the correspondence the prompt promises ("in the order given").
-          content: [
-            ...photos.map((photo) => imageBlock(photo.webp)),
-            { type: 'text', text: clusterUser(photos.length) },
-          ],
+          content: [...blocks, { type: 'text', text: clusterUser(blocks.length) }],
         },
       ],
     })
@@ -191,10 +200,7 @@ export async function clusterPhotos(photos: ClusterPhoto[]): Promise<AiResult<st
     return { ok: false, reason: classify(err) }
   }
 
-  const groups = normalizeClusters(
-    raw,
-    photos.map((photo) => photo.id),
-  )
+  const groups = normalizeClusters(raw, ids)
   if (groups === null) {
     // A rejection is otherwise silent: the batch falls back to capture-time
     // grouping and the seller is told only that copy was not generated. A
@@ -221,6 +227,12 @@ export async function captionItem(images: Buffer[], categories: string[]): Promi
   // caption — an empty name and description — is already the right outcome.
   if (images.length === 0) return { ok: false, reason: 'FAILED' }
 
+  // Copied for the same reason clusterPhotos snapshots its ids: this list is
+  // offered to the model before the await and checked against after it, and
+  // the caller's array is writable throughout. Checking against a list the
+  // model was never shown is how an invented category gets accepted.
+  const allowed = [...categories]
+
   let raw: unknown
   try {
     const message = await anthropic.messages.create({
@@ -232,7 +244,7 @@ export async function captionItem(images: Buffer[], categories: string[]): Promi
       messages: [
         {
           role: 'user',
-          content: [...images.map(imageBlock), { type: 'text', text: captionUser(categories) }],
+          content: [...images.map(imageBlock), { type: 'text', text: captionUser(allowed) }],
         },
       ],
     })
@@ -253,7 +265,7 @@ export async function captionItem(images: Buffer[], categories: string[]): Promi
     value: {
       headline: listing.headline.trim(),
       description: listing.description.trim(),
-      category: categories.includes(category) ? category : '',
+      category: allowed.includes(category) ? category : '',
     },
   }
 }

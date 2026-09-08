@@ -96,6 +96,28 @@ describe('clusterPhotos', () => {
     expect(content[3].text).toContain('Here are 3 photographs, numbered 0 to 2')
   })
 
+  /**
+   * The same failure again, with time as the gap instead of the code path.
+   * `photos` belongs to the caller and stays writable while the model thinks,
+   * so any derivation left until after the await is a derivation from an
+   * array that may no longer be the one the images came from — and, once
+   * more, the accounting invariant would hold over the wrong photos.
+   */
+  it('resolves the response against the photos it sent, even if the caller reorders the array mid-call', async () => {
+    const photos = [photo('a', 'AAA'), photo('b', 'BBB'), photo('c', 'CCC')]
+    create.mockImplementation(async () => {
+      await Promise.resolve()
+      photos.reverse()
+      return groupsCall([[0], [1], [2]])
+    })
+
+    const result = await clusterPhotos(photos)
+
+    const content = userContent()
+    expect(content[0].source?.data).toBe(Buffer.from('AAA').toString('base64'))
+    expect(result).toEqual({ ok: true, value: [['a'], ['b'], ['c']] })
+  })
+
   it('gives a photo the model omitted a group of its own', async () => {
     create.mockResolvedValue(groupsCall([[0]]))
     const result = await clusterPhotos([photo('a', 'A'), photo('b', 'B'), photo('c', 'C')])
@@ -202,6 +224,18 @@ describe('captionItem', () => {
   it('keeps a category the seller actually has, verbatim', async () => {
     create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט', 'מטבח'])
+    expect(result).toEqual({ ok: true, value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' } })
+  })
+
+  it('checks the category against the list it offered the model, not a list changed mid-call', async () => {
+    const categories = ['ריהוט']
+    create.mockImplementation(async () => {
+      await Promise.resolve()
+      categories[0] = 'מטבח'
+      return listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' })
+    })
+
+    const result = await captionItem([Buffer.from('x')], categories)
     expect(result).toEqual({ ok: true, value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' } })
   })
 
