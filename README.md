@@ -93,6 +93,15 @@ unescaped, exactly as `admin:password` printed it.
 Set `SESSION_SECRET` to any long random string, e.g. `openssl rand -base64
 32`, and leave `UPLOAD_DIR` as `./.uploads` for local development.
 
+`ANTHROPIC_API_KEY` is the one variable in `.env.example` that is genuinely
+optional. It turns on the photo import described below — Claude grouping a
+drop of photos by what is in them and writing the Hebrew name and description
+for each group. Leave it empty and the app boots exactly as it does now, the
+storefront is untouched, and the bulk tab keeps today's capture-time uploader
+instead. Nothing about the shop depends on it, which is why
+`src/instrumentation.ts` does not list it among the variables whose absence
+stops the server.
+
 `UPLOAD_DIR` is resolved against the working directory, and the standalone
 build's `server.js` changes it to `.next/standalone/` before it runs. So a
 relative path means one directory under `npm run dev` and a different one if
@@ -188,6 +197,63 @@ every iPhone upload onto the two weaker fallback layers instead. Both upload
 components (the single-item photo drop and the bulk queue) currently use the
 unnarrowed `accept="image/*"` on purpose.
 
+## Importing a whole sale's worth of photos
+
+With `ANTHROPIC_API_KEY` set, the "העלאה מרוכזת" tab in `/admin/items` becomes
+an import: the seller drops up to 60 photos at once, Claude groups them by
+what is in them — twelve shots of one sofa are one item, not twelve — and
+writes a Hebrew headline and description for each group. That lands the
+seller on a review screen at `/admin/items/import/<batch>`, which is where
+the real work happens:
+
+- a card per proposed item, with its photo strip and its fields;
+- per photo, **remove** and **move to…** — the grouping is a proposal, and
+  correcting one photo that went to the wrong item is a two-tap fix;
+- a bulk bar over the selected cards that sets **price**, **category** or the
+  **pickup window** across all of them in one action, then publishes them;
+- **discard the whole import**, which is the only control that also reaches
+  photos that never made it onto an item.
+
+Nothing is published until the seller says so. Every proposed item is a
+`DRAFT`, and closing the tab loses nothing — the drafts are in
+`/admin/items`, and the review screen's URL still works.
+
+**The photos upload in chunks of six, one request after another.** This is
+worth knowing before changing anything in that path. A single request
+carrying sixty phone photos means a quarter of a gigabyte held in memory
+before any per-file check can run, plus `sharp`'s working memory on top;
+platforms also cap request bodies well below that. Six at a time bounds the
+memory whatever the seller drops, makes the photos land visibly as they go,
+and costs one chunk rather than the whole drop when a connection dies. The
+requests must stay **sequential**: each one numbers its photos from what the
+batch already holds, so two in flight read the same count and hand out
+colliding positions. Nothing is lost when that happens, which is what makes
+it nasty — the batch is simply in the wrong order, and every item's cover
+photo is whatever ended up first.
+
+### When the AI account runs out of credit
+
+It will happen without warning, mid-import, and it must not look like a
+crash. The client classifies the API's "no credit" answers (a `400`
+`invalid_request_error` naming credit, or a `429`) into a single outcome, and
+the import then:
+
+- **keeps every photo** — they are already uploaded and they keep their
+  batch;
+- falls back to grouping by **capture time**, so the seller still gets items
+  and still reaches the review screen with every photo accounted for;
+- skips the copy entirely rather than trying it per item — sixty doomed calls
+  in a row is the wrong way to discover a dead key;
+- says so in **one plain Hebrew line** on the review screen: automatic naming
+  is unavailable because the AI account has no credit, and everything else
+  works normally;
+- retries nothing. Topping the account up works on the next import, with no
+  restart — the latch is per batch, not global.
+
+The same capture-time fallback catches a clustering call that fails or comes
+back malformed; the only difference is which line the seller reads. The shop
+itself is never on this path: nothing here runs for a buyer.
+
 ## Deploying to Railway
 
 The project deploys with Railway's Nixpacks builder — there is intentionally
@@ -239,6 +305,10 @@ To set the project up on Railway:
    - `SESSION_SECRET` — a long random string, e.g. `openssl rand -base64 32`.
    - `UPLOAD_DIR` — set to `/data/uploads`, i.e. inside the volume from step
      3.
+   - `ANTHROPIC_API_KEY` — **optional.** Set it to turn on the photo import
+     (see above). Leaving it out is a supported configuration, not a broken
+     one: the app boots, the shop works, and the bulk tab falls back to
+     grouping photos by capture time.
 5. Deploy.
 
 `src/instrumentation.ts` backs this up with a fail-fast check: on server
@@ -278,3 +348,16 @@ and runs the same full journey twice, once under a desktop viewport and once
 under a phone-sized touch viewport, since the product requirement is that
 both buyers and sellers (including bulk photo uploads) work properly on a
 phone, not just a desktop browser.
+
+That suite boots the server with `ANTHROPIC_API_KEY` **blanked**, whatever
+your `.env` holds, and `e2e/import.spec.ts` exercises the import along the
+no-key path on purpose. It is a specified path rather than a degraded one,
+and it is the only one a test can assert against: a real clustering call
+decides which photo belongs with which from the photographs themselves, so no
+fixture could say in advance what the review screen should show. It also
+keeps the suite off the network and off the API bill. The prompts themselves
+are checked against a model instead, by hand.
+
+Both suites share the one Postgres on port 5433 and both truncate it, so
+running either leaves the other's data gone — reseed with `npm run db:seed`
+(or your own demo seed) when you are done.

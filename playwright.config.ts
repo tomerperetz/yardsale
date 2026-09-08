@@ -65,6 +65,16 @@ export default defineConfig({
     // (which is undocumented behaviour, not a guarantee) — dotenv above
     // already populated process.env in this (parent) process, so the
     // spawned build+start subprocess inherits it here regardless.
-    env: process.env as Record<string, string>,
+    //
+    // ANTHROPIC_API_KEY is blanked on purpose, whatever the developer running
+    // this has in their .env. The key is optional (spec §11) and its absence
+    // is a fully specified path, not a broken one: clustering falls back to
+    // capture time and no copy is generated (spec §7.4, first row). Pinning it
+    // empty is what makes import.spec.ts deterministic — a real clustering
+    // call would group by what is in the photographs, so no assertion about
+    // which item holds which photo could survive it — and it keeps the suite
+    // off the network and off the product owner's API credit. Prompt quality
+    // is checked the way spec §10 asks, against a model, not from here.
+    env: { ...(process.env as Record<string, string>), ANTHROPIC_API_KEY: '' },
   },
 })

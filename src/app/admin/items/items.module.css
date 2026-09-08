@@ -8,6 +8,14 @@
 
 .shell {
   padding-block: 26px 60px;
+  /* This <main> is a grid item of admin.module.css's .shell, and a grid item's
+     automatic minimum size is its content's — so a photo strip that scrolls
+     inside itself (import.module.css's .strip) widens this column anyway
+     instead of scrolling. On a 390px phone, nine photos still waiting to be
+     grouped took the whole admin — nav included — out to 1026px, and the
+     review screen's own buttons went off the side where nothing could reach
+     them. .card sets it for the same reason one level down. */
+  min-width: 0;
 }
 
 .panel {
