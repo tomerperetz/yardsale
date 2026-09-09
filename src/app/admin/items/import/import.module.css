@@ -472,3 +472,24 @@
   color: var(--ink-2);
   margin: 0 0 16px;
 }
+
+/* The line under a category field holding a name the shop did not have before
+   this import. Deliberately an ordinary note rather than a warning colour: on
+   a first import into an empty shop EVERY category is new, and a screen of red
+   would say "something is wrong" when the answer is "yes, that is the point". */
+.newCat {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  padding-inline-start: 18px;
+  position: relative;
+}
+.newCat::before {
+  content: '＋';
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0;
+  font-weight: 700;
+  color: var(--accent);
+}

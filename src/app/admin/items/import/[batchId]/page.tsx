@@ -48,7 +48,8 @@ export default async function ImportReviewPage({
   const { batchId } = await params
   const notice = readNotice((await searchParams).notice)
 
-  const [items, loosePhotos, categories, published, itemCount, categoryCount, claimedCount] = await Promise.all([
+  const [items, loosePhotos, categories, newCategories, published, itemCount, categoryCount, claimedCount] =
+    await Promise.all([
     db.item.findMany({
       where: { importBatchId: batchId, status: ItemStatus.DRAFT },
       orderBy: { createdAt: 'asc' },
@@ -64,6 +65,19 @@ export default async function ImportReviewPage({
       select: { id: true, lqip: true },
     }),
     db.category.findMany({ orderBy: { name: 'asc' }, select: { name: true } }),
+    // Categories that exist only because of this import. A category every one
+    // of whose items belongs to this batch is one the shop did not have before
+    // the seller dropped these photos — which is exactly what "new" means to
+    // them. Computed rather than stored: it needs no column, and it stops
+    // being true the moment the category earns an item of its own, which is
+    // also the moment it stops being worth flagging.
+    db.category.findMany({
+      where: {
+        items: { some: { importBatchId: batchId } },
+        NOT: { items: { some: { importBatchId: { not: batchId } } } },
+      },
+      select: { name: true },
+    }),
     db.item.count({ where: { importBatchId: batchId, status: { not: ItemStatus.DRAFT } } }),
     db.item.count(),
     db.category.count(),
@@ -138,6 +152,7 @@ export default async function ImportReviewPage({
                 batchId={batchId}
                 items={reviewItems}
                 categories={categories.map((category) => category.name)}
+                newCategories={newCategories.map((category) => category.name)}
                 loosePhotos={loosePhotos}
                 notice={notice}
                 defaults={defaults}

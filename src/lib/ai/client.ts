@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { normalizeClusters } from './clusters'
+import { normalizeCategoryName, normalizeForCompare } from '@/lib/category-name'
 import { CAPTION_SYSTEM, CLUSTER_SYSTEM, captionUser, clusterUser } from './prompts'
 import type { AiFailure, AiResult, Caption } from './types'
 
@@ -216,9 +217,15 @@ export async function clusterPhotos(photos: ClusterPhoto[]): Promise<AiResult<st
  * Writes the Hebrew headline and description for one item, and picks its
  * category from the seller's own list.
  *
- * `category` comes back as `''` unless the model returned one of `categories`
- * verbatim (spec §3.5) — an invented category is not an error, it is simply
- * no category, and the caller's carried-forward default takes over.
+ * `category` is one of `categories` verbatim, or a name the model proposed
+ * because none of them fitted, or `''` when it could not tell (spec §3.5).
+ * A proposal comes back with `categoryIsNew: true` so the review screen can
+ * flag it before the seller accepts it — that flag is the whole safeguard
+ * against a filter bar full of near-duplicates.
+ *
+ * A "proposal" that only differs from an existing name by whitespace, or by a
+ * leading "ה", is not a proposal: it is that existing category, returned
+ * verbatim in the seller's own spelling.
  */
 export async function captionItem(images: Buffer[], categories: string[]): Promise<AiResult<Caption>> {
   const anthropic = client()
@@ -259,13 +266,19 @@ export async function captionItem(images: Buffer[], categories: string[]): Promi
     return { ok: false, reason: 'FAILED' }
   }
 
-  const category = typeof listing.category === 'string' ? listing.category.trim() : ''
+  const proposed = typeof listing.category === 'string' ? normalizeCategoryName(listing.category) : ''
+  // Match against the seller's own list first, loosely enough that "הריהוט"
+  // resolves to their "ריהוט" rather than creating a second chip beside it.
+  // A match is returned in THEIR spelling, not the model's.
+  const existing = allowed.find((name) => normalizeForCompare(name) === normalizeForCompare(proposed))
+
   return {
     ok: true,
     value: {
       headline: listing.headline.trim(),
       description: listing.description.trim(),
-      category: allowed.includes(category) ? category : '',
+      category: existing ?? proposed,
+      categoryIsNew: proposed !== '' && existing === undefined,
     },
   }
 }

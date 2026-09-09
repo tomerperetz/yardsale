@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { photoUrl } from '@/lib/photo-url'
 import { DRAFT_NAME } from '@/lib/admin/draft'
+import { normalizeForCompare } from '@/lib/category-name'
 import { PickupWindow } from '@/components/PickupWindow'
 import { updateItemAction } from '@/app/admin/items/actions'
 import type { ImportNotice } from '@/lib/import/batch'
@@ -63,6 +64,7 @@ export function ImportReview({
   batchId,
   items: initialItems,
   categories,
+  newCategories,
   loosePhotos,
   notice,
   defaults,
@@ -70,11 +72,23 @@ export function ImportReview({
   batchId: string
   items: ReviewItem[]
   categories: string[]
+  /** Names that exist only because of this import — flagged so the seller sees them before accepting. */
+  newCategories: string[]
   loosePhotos: ReviewPhoto[]
   notice: ImportNotice
   defaults: ReviewDefaults
 }) {
   const categoryListId = useId()
+
+  // A name the shop did not have before this import. Compared the same loose
+  // way the AI client compares them — whitespace collapsed and a leading "ה"
+  // dropped — so that editing "ריהוט" to "הריהוט" does not suddenly flag it as
+  // new, and so a seller who types an existing name by hand sees no warning.
+  const newCategoryKeys = new Set(newCategories.map(normalizeForCompare))
+  const isNewCategory = (name: string) => {
+    const key = normalizeForCompare(name)
+    return key !== '' && newCategoryKeys.has(key)
+  }
 
   const [items, setItems] = useState(initialItems)
   const [loose, setLoose] = useState(loosePhotos)
@@ -638,7 +652,13 @@ export function ImportReview({
                       value={item.categoryName}
                       onChange={(e) => editItem(item.id, { categoryName: e.target.value })}
                       list={categoryListId}
+                      aria-describedby={isNewCategory(item.categoryName) ? `newcat-${item.id}` : undefined}
                     />
+                    {isNewCategory(item.categoryName) && (
+                      <p id={`newcat-${item.id}`} className={styles.newCat}>
+                        קטגוריה חדשה — לא הייתה לכם עד עכשיו. אפשר לשנות לשם קיים.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className={styles.pair}>

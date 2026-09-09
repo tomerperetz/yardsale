@@ -2,13 +2,13 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
+import { hebrewSlug, randomSuffix } from '@/lib/slug'
 import { aiEnabled, captionItem, clusterPhotos } from '@/lib/ai/client'
 import type { AiFailure, AiResult, Caption } from '@/lib/ai/types'
 import { DRAFT_NAME } from '@/lib/admin/draft'
 import { startOfUtcDay } from '@/lib/dates'
 import { groupByCaptureTime, type PhotoStamp } from '@/lib/exif'
 import { photoDir, photoFilename } from '@/lib/images'
-import { hebrewSlug, randomSuffix } from '@/lib/slug'
 
 /**
  * Turning an uploaded batch into draft items — spec §7.2.
@@ -277,9 +277,13 @@ async function captionOne(
     return caption.reason
   }
 
-  // The category is already validated to be one of `names` or '' (spec §3.5);
-  // an empty one leaves the carried-forward default in place.
-  const categoryId = idByName.get(caption.value.category)
+  // One of the seller's own names, a new one the model proposed, or '' when it
+  // could not tell (spec §3.5). An empty one leaves the carried-forward
+  // default in place; a proposal is created now so the item has a real
+  // category, and the review screen flags it as new before the seller accepts.
+  const categoryId = caption.value.category === ''
+    ? undefined
+    : (idByName.get(caption.value.category) ?? (await createProposedCategory(caption.value.category)))
 
   await db.item.update({
     where: { id: item.id },
@@ -290,6 +294,29 @@ async function captionOne(
     },
   })
   return null
+}
+
+/**
+ * Creates a category the model proposed, or returns the existing one if
+ * another caption in the same batch proposed it first.
+ *
+ * Captions run in parallel, so two items can propose the same new name at the
+ * same moment. `name` is unique, so the loser gets P2002 — which is not a
+ * failure here, it is the answer: the category now exists and both items want
+ * it. Anything else is left to the caller's own failure handling rather than
+ * silently swallowed.
+ */
+async function createProposedCategory(name: string): Promise<string | undefined> {
+  try {
+    const created = await db.category.create({
+      data: { name, slug: hebrewSlug(name, randomSuffix()) },
+      select: { id: true },
+    })
+    return created.id
+  } catch {
+    const existing = await db.category.findUnique({ where: { name }, select: { id: true } })
+    return existing?.id
+  }
 }
 
 /**

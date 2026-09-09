@@ -20,9 +20,11 @@ export type ItemResult = { ok: true; id: string; slug: string } | { ok: false; e
 
 export type DeleteResult = { ok: true } | { ok: false; error: string }
 
-export function normalizeCategoryName(raw: string): string {
-  return raw.trim().replace(/\s+/g, ' ')
-}
+// Defined in an import-free module so the AI client can compare names without
+// pulling Prisma and sharp in behind them. Re-exported here because this is
+// where every server-side caller already looks for it.
+export { normalizeCategoryName } from '@/lib/category-name'
+import { normalizeCategoryName } from '@/lib/category-name'
 
 /**
  * An `<input type="date">` value as the UTC-midnight Date the schema stores.

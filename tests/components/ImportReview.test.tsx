@@ -69,6 +69,7 @@ function renderReview(overrides: Partial<Parameters<typeof ImportReview>[0]> = {
       batchId="batch-1"
       items={items()}
       categories={['ריהוט', 'מטבח']}
+      newCategories={[]}
       loosePhotos={[]}
       notice="NONE"
       defaults={DEFAULTS}
@@ -303,5 +304,27 @@ describe('the import review screen', () => {
     renderReview({ items: [] })
     expect(screen.getByText('אין פריטים בייבוא הזה.')).toBeTruthy()
     expect(screen.getByText('לרשימת הפריטים').getAttribute('href')).toBe('/admin/items')
+  })
+
+  it('flags a category this import invented, so the seller sees it before accepting', () => {
+    renderReview({ newCategories: ['ריהוט'] })
+    expect(screen.getAllByText(/קטגוריה חדשה/).length).toBeGreaterThan(0)
+  })
+
+  it('says nothing about a category the seller already had', () => {
+    renderReview({ newCategories: [] })
+    expect(screen.queryByText(/קטגוריה חדשה/)).toBeNull()
+  })
+
+  it('stops flagging once the seller edits the field to a name they already have', () => {
+    // The flag follows the value in the box, not the value the AI proposed.
+    // A seller who fixes a bad suggestion should see the warning go away as
+    // they fix it, not sit there contradicting what they just typed.
+    renderReview({ newCategories: ['ספה'], items: [{ ...items()[0], categoryName: 'ספה' }] })
+    expect(screen.getAllByText(/קטגוריה חדשה/).length).toBe(1)
+
+    const field = screen.getByLabelText('קטגוריה') as HTMLInputElement
+    fireEvent.change(field, { target: { value: 'ריהוט' } })
+    expect(screen.queryByText(/קטגוריה חדשה/)).toBeNull()
   })
 })

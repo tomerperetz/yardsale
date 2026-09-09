@@ -1,9 +1,10 @@
 import { db } from '@/lib/db'
-import { normalizeCategoryName } from '@/lib/admin/items'
+import { normalizeCategoryName, normalizeForCompare } from '@/lib/category-name'
 
-export function normalizeForCompare(name: string): string {
-  return normalizeCategoryName(name).replace(/^ה/, '')
-}
+// Re-exported because this is where the merge/suggest code already looks for
+// it; the definition lives in an import-free module so the AI client can use
+// the same comparison without dragging Prisma along.
+export { normalizeForCompare }
 
 export function editDistance(a: string, b: string): number {
   const rows = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array<number>(b.length).fill(0)])

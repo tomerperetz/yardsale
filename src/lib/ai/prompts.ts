@@ -57,9 +57,17 @@ what colour it is, and its visible condition. If a photograph shows a scratch,
 a stain, wear, or a missing part, say so plainly — it is the reason a buyer
 trusts the rest.
 
-Category: choose exactly one name from the list you are given, copied
-verbatim. If none of them fits the item, return an empty string. Never invent
-a category name.
+Category: prefer a name from the list you are given, copied verbatim. Use one
+whenever it genuinely covers the item.
+
+If none of them covers it, propose a short new category name in Hebrew — a
+plain noun a shopper would scan for, like the ones already on the list. This is
+for an object the list does not cover, not for a shade of meaning: a desk lamp
+belongs in an existing "ריהוט" rather than in a new "מנורות". Prefer an
+existing name even when it is broader than the item.
+
+If you cannot tell what the item is from the photographs, return an empty
+string rather than guessing a category.
 
 Write natural Hebrew, the way a person selling their own furniture writes. Not
 translated-sounding, not formal.`

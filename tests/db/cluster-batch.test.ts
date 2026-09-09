@@ -37,7 +37,7 @@ beforeEach(async () => {
   captionItem.mockReset()
   aiEnabled.mockReset()
   aiEnabled.mockReturnValue(true)
-  captionItem.mockResolvedValue({ ok: true, value: { headline: 'כותרת', description: 'תיאור', category: '' } })
+  captionItem.mockResolvedValue({ ok: true, value: { headline: 'כותרת', description: 'תיאור', category: '', categoryIsNew: false } })
 })
 
 afterEach(() => rm(dir, { recursive: true, force: true }))
@@ -135,7 +135,7 @@ describe('clusterBatch — the successful path', () => {
     ok([ids])
     captionItem.mockResolvedValue({
       ok: true,
-      value: { headline: 'שולחן עץ', description: 'שני שריטות בפינה.', category: '' },
+      value: { headline: 'שולחן עץ', description: 'שני שריטות בפינה.', category: '', categoryIsNew: false },
     })
 
     const result = await clusterBatch(BATCH)
@@ -162,7 +162,7 @@ describe('clusterBatch — the successful path', () => {
     const chosen = await db.category.create({ data: { name: 'כלי מטבח', slug: 'kitchen' } })
     const ids = await makePhotos([null])
     ok([ids])
-    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: 'כלי מטבח' } })
+    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: 'כלי מטבח', categoryIsNew: false } })
 
     const result = await clusterBatch(BATCH)
     if (!result.ok) throw new Error('expected ok')
@@ -177,7 +177,7 @@ describe('clusterBatch — the successful path', () => {
     await db.category.create({ data: { name: 'כלי מטבח', slug: 'kitchen' } })
     const ids = await makePhotos([null])
     ok([ids])
-    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: '' } })
+    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: '', categoryIsNew: false } })
 
     const result = await clusterBatch(BATCH)
     if (!result.ok) throw new Error('expected ok')
@@ -296,7 +296,7 @@ describe('clusterBatch when one caption fails', () => {
     captionItem.mockImplementation(async (images) =>
       images[0].toString() === ids[0]
         ? { ok: false, reason: 'FAILED' }
-        : { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '' } },
+        : { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '', categoryIsNew: false } },
     )
 
     const result = await clusterBatch(BATCH)
@@ -327,7 +327,7 @@ describe('clusterBatch when one caption fails', () => {
     ok([[ids[0]], [ids[1]]])
     captionItem.mockImplementation(async (images) => {
       if (images[0].toString() === ids[0]) throw new Error('boom')
-      return { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '' } }
+      return { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '', categoryIsNew: false } }
     })
 
     const result = await clusterBatch(BATCH)
@@ -425,5 +425,52 @@ describe('clusterBatch and the photos it may touch', () => {
     expect(clusterPhotos).toHaveBeenCalledTimes(0)
     expect(captionItem).toHaveBeenCalledTimes(0)
     await assertEveryPhotoPlaced(ids, result.itemIds)
+  })
+})
+
+describe('clusterBatch and the categories a caption proposes', () => {
+  it('creates a category the model proposed, so the item is not left on the default', async () => {
+    // Before this, a proposed name simply was not in the id map and the item
+    // silently kept the carried-forward default — the suggestion was made and
+    // then thrown away, which is worse than not making it.
+    const ids = await makePhotos([null])
+    clusterPhotos.mockResolvedValue({ ok: true, value: [[ids[0]]] })
+    captionItem.mockResolvedValue({
+      ok: true,
+      value: { headline: 'אופני הרים', description: 'שלדה אפורה.', category: 'ספורט', categoryIsNew: true },
+    })
+
+    const result = await clusterBatch(BATCH)
+    if (!result.ok) throw new Error('expected ok')
+
+    const created = await db.category.findUnique({ where: { name: 'ספורט' } })
+    expect(created).not.toBeNull()
+
+    const item = await db.item.findUniqueOrThrow({
+      where: { id: result.itemIds[0] },
+      include: { category: true },
+    })
+    expect(item.category.name).toBe('ספורט')
+  })
+
+  it('does not create a second category when two items propose the same new name', async () => {
+    // Captions run in parallel, so this really can happen on one drop. `name`
+    // is unique; the loser's P2002 is the answer, not a failure.
+    const ids = await makePhotos([null, null])
+    clusterPhotos.mockResolvedValue({ ok: true, value: [[ids[0]], [ids[1]]] })
+    captionItem.mockResolvedValue({
+      ok: true,
+      value: { headline: 'פריט', description: 'תיאור.', category: 'כלי גינה', categoryIsNew: true },
+    })
+
+    const result = await clusterBatch(BATCH)
+    if (!result.ok) throw new Error('expected ok')
+
+    expect(await db.category.count({ where: { name: 'כלי גינה' } })).toBe(1)
+    const items = await db.item.findMany({
+      where: { id: { in: result.itemIds } },
+      include: { category: true },
+    })
+    expect(items.map((i) => i.category.name)).toEqual(['כלי גינה', 'כלי גינה'])
   })
 })

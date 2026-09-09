@@ -215,16 +215,72 @@ describe('captionItem', () => {
     expect(create).not.toHaveBeenCalled()
   })
 
-  it('falls back to an empty category when the model returns one not on the list', async () => {
+  // This rule INVERTED on 2026-09-09 (spec §3.5). It used to force any name
+  // the seller did not already have to '' — "never invent a category". The
+  // owner asked for the opposite where it matters: propose one, but marked, so
+  // they see it before it exists. The old assertion is kept as the new one it
+  // became rather than deleted, so the change is visible in the history.
+  it('proposes a name the seller does not have, and marks it new', async () => {
     create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'לא קיים' }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
-    expect(result).toEqual({ ok: true, value: { headline: 'ספה', description: 'בד אפור.', category: '' } })
+    expect(result).toEqual({
+      ok: true,
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'לא קיים', categoryIsNew: true },
+    })
+  })
+
+  it('does not call a name new when it is the seller\'s own with a definite article', async () => {
+    // "הריהוט" is "ריהוט". Creating it would put two chips in the buyer's
+    // filter bar that each hide the other's items — and the seller would have
+    // approved it, because it looked like a considered suggestion.
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'הריהוט' }))
+    const result = await captionItem([Buffer.from('x')], ['ריהוט'])
+    expect(result).toEqual({
+      ok: true,
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: false },
+    })
+  })
+
+  it('does not call a name new when it differs only by whitespace', async () => {
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: '  ריהוט   לבית ' }))
+    const result = await captionItem([Buffer.from('x')], ['ריהוט לבית'])
+    expect(result).toEqual({
+      ok: true,
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט לבית', categoryIsNew: false },
+    })
+  })
+
+  it('returns the seller\'s spelling, not the model\'s, when they match loosely', async () => {
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'הריהוט' }))
+    const result = await captionItem([Buffer.from('x')], ['ריהוט'])
+    expect(result.ok && result.value.category).toBe('ריהוט')
+  })
+
+  it('leaves the category empty, and not new, when the model cannot tell', async () => {
+    create.mockResolvedValue(listingCall({ headline: 'פריט', description: 'לא ברור.', category: '' }))
+    const result = await captionItem([Buffer.from('x')], ['ריהוט'])
+    expect(result).toEqual({
+      ok: true,
+      value: { headline: 'פריט', description: 'לא ברור.', category: '', categoryIsNew: false },
+    })
+  })
+
+  it('proposes into an empty shop, which is the case the feature exists for', async () => {
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' }))
+    const result = await captionItem([Buffer.from('x')], [])
+    expect(result).toEqual({
+      ok: true,
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: true },
+    })
   })
 
   it('keeps a category the seller actually has, verbatim', async () => {
     create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט', 'מטבח'])
-    expect(result).toEqual({ ok: true, value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' } })
+    expect(result).toEqual({
+      ok: true,
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: false },
+    })
   })
 
   it('checks the category against the list it offered the model, not a list changed mid-call', async () => {
@@ -236,13 +292,19 @@ describe('captionItem', () => {
     })
 
     const result = await captionItem([Buffer.from('x')], categories)
-    expect(result).toEqual({ ok: true, value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' } })
+    expect(result).toEqual({
+      ok: true,
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: false },
+    })
   })
 
   it('trims the copy, so stray whitespace never reaches the item name', async () => {
     create.mockResolvedValue(listingCall({ headline: '  ספה  ', description: '\nבד אפור.\n', category: ' ריהוט ' }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
-    expect(result).toEqual({ ok: true, value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' } })
+    expect(result).toEqual({
+      ok: true,
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: false },
+    })
   })
 
   it('reports FAILED when the response is not a listing', async () => {
