@@ -193,10 +193,26 @@ to anything. `token` is long and random and is what appears in `/pay/<token>` an
 
 ```
 DRAFT ──────► AVAILABLE ──────► RESERVED ──────► SOLD
-                  ▲                 │
-                  └─────────────────┘
-                    expiry or cancel
+                  ▲                 │                │
+                  │                 │                │
+                  ├─────────────────┘                │
+                  │   expiry or cancel               │
+                  │                                  │
+                  └──────────────────────────────────┘
+                      the seller cancels a sale they
+                      had already confirmed as paid
 ```
+
+`SOLD` is no longer terminal. `2026-09-07-ai-import-design.md` did not change
+this; a later request did. A seller who confirmed a payment by mistake, or who
+has to unwind a completed sale, cancels the order and its items return to
+`AVAILABLE` to be bought again. That reversal runs through the same guarded
+transition as every other — the write re-asserts the status it validated
+against and touches only items still in the status it expected — so an item
+that has since moved on is not dragged back.
+
+`HIDDEN` is reachable from `AVAILABLE` and `SOLD` by the seller's own hand; see
+the README's table of the five item states.
 
 ### Order
 
