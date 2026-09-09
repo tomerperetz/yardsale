@@ -393,10 +393,11 @@ header {
 .steps b { color: var(--ink); font-weight: 600; }
 .after { font-size: 12.5px; color: var(--ink-3); text-align: center; padding-block-start: 11px; line-height: 1.5; }
 
-/* the missing-bitPhone notice and the claimPaid action's returned message
-   share this: a calm, neutral note — never styled as an alarming error,
-   since one of the three possible messages is pure reassurance */
-.pay-note {
+/* the missing-bitPhone notice, the claimPaid action's returned message, and
+   the line /o/[token] adds under a cancelled order's pill share this: a calm,
+   neutral note — never styled as an alarming error, since one of the possible
+   messages is pure reassurance and another is a refund on its way */
+.pay-note, .order-note {
   background: #FAF8F6; border-radius: 13px; padding: 10px 13px; font-size: 13.5px;
   color: var(--ink-2); margin-block: 12px 0;
 }

@@ -4,6 +4,7 @@ import sharp from 'sharp'
 import { ItemStatus, OrderStatus, PickupSlot, type Settings } from '@prisma/client'
 import { db } from '../src/lib/db'
 import { reserveItems, type ReserveResult } from '../src/lib/orders/reserve'
+import { cancelOrder, confirmPayment } from '../src/lib/orders/transitions'
 import { newOrderCode, newOrderToken } from '../src/lib/orders/codes'
 import { utcDate } from '../src/lib/dates'
 import { hebrewSlug, randomSuffix } from '../src/lib/slug'
@@ -199,6 +200,31 @@ export async function makeClaimedOrder(input: ClaimedOrderInput) {
       items: { create: [{ itemId: item.id, priceAgorot: item.priceAgorot }] },
     },
   })
+  return { item, order }
+}
+
+/**
+ * An order the seller cancelled, in the two shapes a buyer can find waiting
+ * at their own bookmark: one cancelled while the payment was only claimed —
+ * no money moved — and one cancelled after the seller had confirmed it, where
+ * a refund is owed and nothing in this app tracks it.
+ *
+ * Driven through the real transitions rather than written as statuses,
+ * because the only thing telling those two apart is `confirmedAt`, and the
+ * pages under test read it. A fixture that set the columns by hand could set
+ * a combination the state machine never produces.
+ */
+export async function makeCancelledOrder(input: ClaimedOrderInput & { paidFirst: boolean }) {
+  const { item, order } = await makeClaimedOrder(input)
+
+  if (input.paidFirst) {
+    const confirmed = await confirmPayment(order.id)
+    if (!confirmed.ok) throw new Error(`makeCancelledOrder: confirm refused (${confirmed.reason})`)
+  }
+
+  const cancelled = await cancelOrder(order.id)
+  if (!cancelled.ok) throw new Error(`makeCancelledOrder: cancel refused (${cancelled.reason})`)
+
   return { item, order }
 }
 

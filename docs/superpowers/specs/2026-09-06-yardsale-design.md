@@ -318,10 +318,17 @@ the items stay held until the seller confirms.
 
 If the hold has already expired the page says so plainly and links back to the grid.
 
+A cancelled order is not an expired one, and this page is the bookmark a buyer returns
+to. It says which of the two happened, and — for an order cancelled after the seller
+confirmed the payment (§6) — that the seller will be in touch about the refund. Never
+when: nothing here tracks a refund, so the site promises no date it cannot keep.
+
 ### `/o/[token]`
 
 Order status for the buyer afterwards: what they bought, the total, the pickup day and
-slot, the address, and the current state in Hebrew.
+slot, the address, and the current state in Hebrew. A cancelled order carries the same
+one-line explanation as `/pay/[token]`, for the same reason: `בוטל` alone leaves a buyer
+who has paid unable to tell whether their money is coming back.
 
 ## 8. Admin flows
 

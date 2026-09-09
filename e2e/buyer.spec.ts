@@ -3,6 +3,7 @@ import {
   seedShop,
   makeAvailableItem,
   makeAvailableItemWithHebrewSlug,
+  makeCancelledOrder,
   reserveOutOfBand,
   cleanupItems,
   cleanupOrders,
@@ -132,6 +133,56 @@ test.describe('buyer journey', () => {
     } finally {
       await cleanupOrders(tokens)
       await cleanupItems([bike.id])
+    }
+  })
+
+  /**
+   * The buyer's two own pages, after the seller cancelled a sale they had
+   * already confirmed. `/pay/[token]` is the bookmark — it used to fall
+   * through to "ההזמנה פגה", telling someone who is owed a refund that they
+   * timed out, which is the one thing that did not happen. Neither page can
+   * promise when the money comes back (nothing here tracks it), so both say
+   * only what happened and who will be in touch.
+   */
+  test('a buyer whose paid order was cancelled reads about the refund, not an expiry', async ({ page }) => {
+    const { item, order } = await makeCancelledOrder({
+      name: 'תנור אפייה',
+      price: 45000,
+      category: 'מטבח',
+      paidFirst: true,
+    })
+
+    try {
+      await page.goto(`/pay/${order.token}`)
+      await expect(page.getByText('ההזמנה בוטלה אחרי שהתשלום אושר')).toBeVisible()
+      await expect(page.getByText('ההזמנה פגה')).toHaveCount(0)
+
+      await page.getByRole('link', { name: 'לצפייה בהזמנה' }).click()
+      await expect(page).toHaveURL(new RegExp(`/o/${order.token}`))
+      await expect(page.getByText('המוכר/ת יחזרו אליכם לגבי ההחזר')).toBeVisible()
+    } finally {
+      await cleanupOrders([order.token])
+      await cleanupItems([item.id])
+    }
+  })
+
+  test('a buyer whose unpaid order was cancelled is promised no refund', async ({ page }) => {
+    const { item, order } = await makeCancelledOrder({
+      name: 'שידה לבנה',
+      price: 28000,
+      category: 'ריהוט',
+      paidFirst: false,
+    })
+
+    try {
+      for (const url of [`/pay/${order.token}`, `/o/${order.token}`]) {
+        await page.goto(url)
+        await expect(page.getByText('ההזמנה בוטלה והפריטים חזרו למכירה')).toBeVisible()
+        await expect(page.getByText('החזר')).toHaveCount(0)
+      }
+    } finally {
+      await cleanupOrders([order.token])
+      await cleanupItems([item.id])
     }
   })
 

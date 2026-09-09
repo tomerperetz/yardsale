@@ -168,7 +168,11 @@ export const LIVE_ORDER_STATUSES = [OrderStatus.PENDING_PAYMENT, OrderStatus.CLA
  * rewording one cannot leave the other saying something else.
  */
 export const HELD_BY_ORDER = 'הפריט שמור להזמנה פעילה. בטלו את ההזמנה כדי לשחרר אותו.'
-export const SOLD_THROUGH_SHOP = 'הפריט נמכר דרך האתר ושייך להזמנה. אי אפשר לשנות את הסטטוס שלו.'
+// Both point at the same way out, because there is one: the order. This one
+// used to end "אי אפשר לשנות את הסטטוס שלו" — true only while a PAID order was
+// terminal. It no longer is (src/lib/orders/state.ts), and this is the exact
+// screen a seller who confirmed a payment by mistake looks at first.
+export const SOLD_THROUGH_SHOP = 'הפריט נמכר דרך האתר ושייך להזמנה. בטלו את ההזמנה כדי לשחרר אותו.'
 
 /**
  * Moves a published item between the three states its seller controls: on the

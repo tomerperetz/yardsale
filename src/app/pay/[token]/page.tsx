@@ -39,6 +39,10 @@ export default async function PayPage({ params }: { params: Promise<{ token: str
         status: true,
         totalAgorot: true,
         holdExpiresAt: true,
+        // A cancelled order that carries one was cancelled after the seller
+        // had the money — the difference between "you're owed a refund" and
+        // "nothing happened", and the buyer reads that difference below.
+        confirmedAt: true,
         items: { select: { itemId: true } },
       },
     }),
@@ -104,6 +108,28 @@ export default async function PayPage({ params }: { params: Promise<{ token: str
               <Link className="btn-primary" href={`/o/${order.token}`}>
                 לצפייה בהזמנה
               </Link>
+            </div>
+          ) : order.status === 'CANCELLED' ? (
+            /* Cancelled is not expired, and this bookmark is where the buyer
+               comes back to. Falling through to "ההזמנה פגה" told someone
+               whose paid order the seller had just reversed that they had
+               timed out — the one thing that did not happen. */
+            <div className="pay-over">
+              {order.confirmedAt ? (
+                <>
+                  <p>ההזמנה בוטלה אחרי שהתשלום אושר. המוכר/ת יחזרו אליכם לגבי ההחזר.</p>
+                  <Link className="btn-primary" href={`/o/${order.token}`}>
+                    לצפייה בהזמנה
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p>ההזמנה בוטלה והפריטים חזרו למכירה.</p>
+                  <Link className="btn-primary" href="/">
+                    חזרה לחנות
+                  </Link>
+                </>
+              )}
             </div>
           ) : (
             <div className="pay-over">

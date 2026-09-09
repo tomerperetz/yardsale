@@ -102,6 +102,19 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
           <h2>הזמנה {order.code}</h2>
           <span className={`status-pill status-${STATUS_CLASS[order.status]}`}>{STATUS_LABEL[order.status]}</span>
 
+          {/* "בוטל" alone leaves a buyer who paid ₪450 with no idea whether
+              they are getting it back. Saying what happened is not a promise
+              the site cannot keep — the refund is the seller's to make, by
+              hand, and nothing here tracks it — so this says that it is
+              coming from them, and says nothing at all about when. */}
+          {order.status === 'CANCELLED' && (
+            <p className="order-note">
+              {order.confirmedAt
+                ? 'ההזמנה בוטלה אחרי שהתשלום אושר. המוכר/ת יחזרו אליכם לגבי ההחזר.'
+                : 'ההזמנה בוטלה והפריטים חזרו למכירה.'}
+            </p>
+          )}
+
           <div className="cart-lines">
             {order.items.map((line) => {
               const photo = line.item.photos[0]
