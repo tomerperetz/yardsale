@@ -70,13 +70,34 @@ Clustering creates DRAFT items immediately. Closing the tab loses nothing, and
 photos have a home. The cost is draft rows if an import is abandoned; §7's
 "discard batch" removes them, and drafts are already invisible to buyers.
 
-### 3.5 Claude assigns the category from the existing set
+### 3.5 Claude assigns a category, and may propose a new one
 
-The caption pass receives the seller's current category names and must return
-one of them verbatim, or the empty string when none fits. It never invents a
-category. When it returns empty, the item takes the carried-forward default.
-The seller can bulk-override (§7). Rationale: categories are a closed set the
-seller already curates, so this is a classification, not a creative act.
+**Superseded 2026-09-09.** This section originally said the model must return
+an existing category verbatim or the empty string, and never invent one. The
+shop's owner asked for the opposite in the case that matters: *"prefer
+existing, but if needed propose new."* The old rule was right that categories
+are the seller's to curate; it was wrong that the model has nothing useful to
+say when none of them fits, which is exactly the situation on a first import
+into an empty shop.
+
+The caption pass receives the seller's current category names and returns
+either:
+
+- **an existing name, verbatim** — always preferred when one genuinely fits;
+- **a proposed new name**, when none does;
+- **the empty string**, when it cannot tell from the photographs.
+
+A proposed name is returned **marked as new**, not silently mixed in with the
+existing ones. That distinction is the whole safeguard: without it a seller
+ends up with `ספה` sitting beside `ריהוט` in the buyer-facing filter bar,
+having approved it without noticing it was new. The review screen shows the
+proposal in the category field, visibly flagged, and the seller accepts,
+renames, or swaps to an existing one. Saving creates the category if it is
+still new — `categoryId()` already does this and needs no change.
+
+Preference is not a tiebreak but an instruction: a new name is for an object
+the existing set genuinely does not cover, not for a shade of meaning. The
+prompt says so, and the seller sees every proposal before it exists.
 
 ### 3.6 Two Claude passes, not one
 
