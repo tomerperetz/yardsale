@@ -18,14 +18,15 @@ export type AiResult<T> = { ok: true; value: T } | { ok: false; reason: AiFailur
  * the model proposed because none of theirs fitted, or empty when it could not
  * tell from the photographs.
  *
- * `categoryIsNew` is what keeps a proposal from arriving disguised as an
- * existing category: the seller sees it flagged and can accept, rename, or
- * swap before it exists. Without that, a first import quietly fills the
- * buyer's filter bar with near-duplicates that each hide the other's items.
+ * There is deliberately no "is this new" flag here. The review screen answers
+ * that from the database — a category no item outside this batch belongs to —
+ * which stays true when the seller edits the field, and stops being true when
+ * the category earns an item of its own. A flag carried from the caption call
+ * would only describe what the model said at the time, and nothing would keep
+ * the two in step. See the spec's §3.5 and tests/db/new-categories.test.ts.
  */
 export type Caption = {
   headline: string
   description: string
   category: string
-  categoryIsNew: boolean
 }

@@ -989,11 +989,17 @@ export function ImportReview({
           {viewing.ids.length > 1 && (
             <div className={styles.viewerNav} onClick={(e) => e.stopPropagation()}>
               {/* In an RTL document the arrow pointing at the NEXT photo is
-                  the left one — reading order, not array order. */}
-              <button type="button" onClick={() => stepViewer(-1)} aria-label="התמונה הקודמת">
+                  the left one — reading order, not array order.
+
+                  dir="ltr" on each BUTTON, not on the row: ‹ and › are
+                  Bidi_Mirrored, so in an RTL context the glyphs render
+                  swapped and the two arrows end up pointing at each other.
+                  Putting it on .viewerNav would flip their order as well and
+                  undo the positioning this comment just explained. */}
+              <button type="button" dir="ltr" onClick={() => stepViewer(-1)} aria-label="התמונה הקודמת">
                 ›
               </button>
-              <button type="button" onClick={() => stepViewer(1)} aria-label="התמונה הבאה">
+              <button type="button" dir="ltr" onClick={() => stepViewer(1)} aria-label="התמונה הבאה">
                 ‹
               </button>
             </div>

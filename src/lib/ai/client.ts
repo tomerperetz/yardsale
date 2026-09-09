@@ -219,9 +219,9 @@ export async function clusterPhotos(photos: ClusterPhoto[]): Promise<AiResult<st
  *
  * `category` is one of `categories` verbatim, or a name the model proposed
  * because none of them fitted, or `''` when it could not tell (spec §3.5).
- * A proposal comes back with `categoryIsNew: true` so the review screen can
- * flag it before the seller accepts it — that flag is the whole safeguard
- * against a filter bar full of near-duplicates.
+ * Whether a proposal is NEW is not decided here — the review screen asks the
+ * database, so the answer survives the seller editing the field. This function
+ * only reports what the model said, resolved against the list it was shown.
  *
  * A "proposal" that only differs from an existing name by whitespace, or by a
  * leading "ה", is not a proposal: it is that existing category, returned
@@ -278,7 +278,6 @@ export async function captionItem(images: Buffer[], categories: string[]): Promi
       headline: listing.headline.trim(),
       description: listing.description.trim(),
       category: existing ?? proposed,
-      categoryIsNew: proposed !== '' && existing === undefined,
     },
   }
 }

@@ -225,7 +225,7 @@ describe('captionItem', () => {
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'לא קיים', categoryIsNew: true },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'לא קיים' },
     })
   })
 
@@ -237,7 +237,7 @@ describe('captionItem', () => {
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: false },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
     })
   })
 
@@ -246,7 +246,7 @@ describe('captionItem', () => {
     const result = await captionItem([Buffer.from('x')], ['ריהוט לבית'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט לבית', categoryIsNew: false },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט לבית' },
     })
   })
 
@@ -261,7 +261,7 @@ describe('captionItem', () => {
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'פריט', description: 'לא ברור.', category: '', categoryIsNew: false },
+      value: { headline: 'פריט', description: 'לא ברור.', category: '' },
     })
   })
 
@@ -270,7 +270,7 @@ describe('captionItem', () => {
     const result = await captionItem([Buffer.from('x')], [])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: true },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
     })
   })
 
@@ -279,7 +279,7 @@ describe('captionItem', () => {
     const result = await captionItem([Buffer.from('x')], ['ריהוט', 'מטבח'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: false },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
     })
   })
 
@@ -294,7 +294,7 @@ describe('captionItem', () => {
     const result = await captionItem([Buffer.from('x')], categories)
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: false },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
     })
   })
 
@@ -303,7 +303,7 @@ describe('captionItem', () => {
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', categoryIsNew: false },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
     })
   })
 

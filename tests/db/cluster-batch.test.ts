@@ -37,7 +37,7 @@ beforeEach(async () => {
   captionItem.mockReset()
   aiEnabled.mockReset()
   aiEnabled.mockReturnValue(true)
-  captionItem.mockResolvedValue({ ok: true, value: { headline: 'כותרת', description: 'תיאור', category: '', categoryIsNew: false } })
+  captionItem.mockResolvedValue({ ok: true, value: { headline: 'כותרת', description: 'תיאור', category: '' } })
 })
 
 afterEach(() => rm(dir, { recursive: true, force: true }))
@@ -135,7 +135,7 @@ describe('clusterBatch — the successful path', () => {
     ok([ids])
     captionItem.mockResolvedValue({
       ok: true,
-      value: { headline: 'שולחן עץ', description: 'שני שריטות בפינה.', category: '', categoryIsNew: false },
+      value: { headline: 'שולחן עץ', description: 'שני שריטות בפינה.', category: '' },
     })
 
     const result = await clusterBatch(BATCH)
@@ -162,7 +162,7 @@ describe('clusterBatch — the successful path', () => {
     const chosen = await db.category.create({ data: { name: 'כלי מטבח', slug: 'kitchen' } })
     const ids = await makePhotos([null])
     ok([ids])
-    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: 'כלי מטבח', categoryIsNew: false } })
+    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: 'כלי מטבח' } })
 
     const result = await clusterBatch(BATCH)
     if (!result.ok) throw new Error('expected ok')
@@ -177,7 +177,7 @@ describe('clusterBatch — the successful path', () => {
     await db.category.create({ data: { name: 'כלי מטבח', slug: 'kitchen' } })
     const ids = await makePhotos([null])
     ok([ids])
-    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: '', categoryIsNew: false } })
+    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: '' } })
 
     const result = await clusterBatch(BATCH)
     if (!result.ok) throw new Error('expected ok')
@@ -296,7 +296,7 @@ describe('clusterBatch when one caption fails', () => {
     captionItem.mockImplementation(async (images) =>
       images[0].toString() === ids[0]
         ? { ok: false, reason: 'FAILED' }
-        : { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '', categoryIsNew: false } },
+        : { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '' } },
     )
 
     const result = await clusterBatch(BATCH)
@@ -327,7 +327,7 @@ describe('clusterBatch when one caption fails', () => {
     ok([[ids[0]], [ids[1]]])
     captionItem.mockImplementation(async (images) => {
       if (images[0].toString() === ids[0]) throw new Error('boom')
-      return { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '', categoryIsNew: false } }
+      return { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '' } }
     })
 
     const result = await clusterBatch(BATCH)
@@ -437,7 +437,7 @@ describe('clusterBatch and the categories a caption proposes', () => {
     clusterPhotos.mockResolvedValue({ ok: true, value: [[ids[0]]] })
     captionItem.mockResolvedValue({
       ok: true,
-      value: { headline: 'אופני הרים', description: 'שלדה אפורה.', category: 'ספורט', categoryIsNew: true },
+      value: { headline: 'אופני הרים', description: 'שלדה אפורה.', category: 'ספורט' },
     })
 
     const result = await clusterBatch(BATCH)
@@ -460,7 +460,7 @@ describe('clusterBatch and the categories a caption proposes', () => {
     clusterPhotos.mockResolvedValue({ ok: true, value: [[ids[0]], [ids[1]]] })
     captionItem.mockResolvedValue({
       ok: true,
-      value: { headline: 'פריט', description: 'תיאור.', category: 'כלי גינה', categoryIsNew: true },
+      value: { headline: 'פריט', description: 'תיאור.', category: 'כלי גינה' },
     })
 
     const result = await clusterBatch(BATCH)

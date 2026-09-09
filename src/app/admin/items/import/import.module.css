@@ -231,6 +231,9 @@
   cursor: default;
 }
 .cover::after {
+  /* Painted above the zoom button, so without this it is a dead spot in the
+     corner of the one photo the seller is most likely to tap — the cover. */
+  pointer-events: none;
   content: 'ראשי';
   position: absolute;
   inset-block-end: 5px;
