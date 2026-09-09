@@ -356,6 +356,20 @@ Carrying **the category and the pickup range** forward from the last item surviv
 capture-time queue below, because those still repeat across a sitting. The AI import asks
 for neither at drop time: its review screen sets both across the whole batch at once.
 
+One behaviour went with the form that is worth naming, because it is a real change rather
+than a tidy-up: **an item can no longer be created without a photo.** The single form
+would take a name and a price and nothing else; every route in now starts from a
+photograph, and `/admin/items/[id]` only edits what already exists. For a yard sale that
+is arguably correct — a listing nobody can see is a listing nobody buys — but a seller who
+wanted to write an item up before photographing it can no longer do so.
+
+### `/admin/items` — bulk queue
+
+**This screen now renders only when `ANTHROPIC_API_KEY` is unset.** With a key, the drop
+screen is the AI import (`2026-09-07-ai-import-design.md` §7); without one it is this
+capture-time queue, which is the specified fallback (that spec's §7.4) and the seller's
+only way in. It is unchanged otherwise.
+
 ### `/admin/items` — bulk queue
 
 Drop many photos at once. In the browser, `exifr` reads `DateTimeOriginal` from each
