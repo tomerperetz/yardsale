@@ -93,12 +93,28 @@ existing ones. That distinction is the whole safeguard: without it a seller
 ends up with `ספה` sitting beside `ריהוט` in the buyer-facing filter bar,
 having approved it without noticing it was new. The review screen shows the
 proposal in the category field, visibly flagged, and the seller accepts,
-renames, or swaps to an existing one. Saving creates the category if it is
-still new — `categoryId()` already does this and needs no change.
+renames, or swaps to an existing one.
+
+**The category row is created when the caption lands, not when the seller
+saves.** `Item.categoryId` is not nullable, so an item has to point at
+something the moment its caption is applied; `createProposedCategory` in
+`src/lib/import/batch.ts` creates it then. The seller therefore reviews a
+category that already exists — the flag tells them it is new to their shop,
+not that it is hypothetical. An import abandoned before publishing leaves the
+category behind, which `discardBatch` does not remove because a category is not
+a photo and may since have been used elsewhere.
+
+The flag itself is **computed, not stored**: a category is new when no item
+outside this batch belongs to it. It needs no column, and it stops being true
+the moment the category earns an item of its own — which is also the moment it
+stops being worth saying. The query must treat a null `importBatchId` as
+"outside this batch": in SQL `NULL <> 'batch'` is NULL rather than true, so a
+naive `not: batchId` misses every hand-made item and flags the seller's oldest
+categories as new. `tests/db/new-categories.test.ts` pins this.
 
 Preference is not a tiebreak but an instruction: a new name is for an object
 the existing set genuinely does not cover, not for a shade of meaning. The
-prompt says so, and the seller sees every proposal before it exists.
+prompt says so, and the seller sees every proposal before it reaches a buyer.
 
 ### 3.6 Two Claude passes, not one
 

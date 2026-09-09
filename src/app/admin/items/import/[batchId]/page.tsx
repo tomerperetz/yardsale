@@ -74,7 +74,18 @@ export default async function ImportReviewPage({
     db.category.findMany({
       where: {
         items: { some: { importBatchId: batchId } },
-        NOT: { items: { some: { importBatchId: { not: batchId } } } },
+        NOT: {
+          items: {
+            // The OR is not optional. `importBatchId: { not: batchId }` renders
+            // as `"importBatchId" <> $1`, and in SQL `NULL <> 'batch'` is NULL,
+            // not true — so an item added by hand, which is every item in a
+            // shop that has never imported, fails the inner EXISTS, the
+            // NOT EXISTS passes, and the seller's years-old category comes back
+            // flagged as brand new. The flag is the whole safeguard §3.5 rests
+            // on, and it would have cried wolf on every card of a first import.
+            some: { OR: [{ importBatchId: null }, { importBatchId: { not: batchId } }] },
+          },
+        },
       },
       select: { name: true },
     }),
