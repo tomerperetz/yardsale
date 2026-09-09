@@ -1,6 +1,6 @@
 /*
  * Shared visual language for the admin item-entry components (PhotoDrop,
- * ItemForm, BulkQueue). Class names generally mirror
+ * BulkQueue, EditItemForm). Class names generally mirror
  * docs/design/mockups/03-admin-items.html.
  *
  * Scoped as a CSS Module on purpose: some of these names (`.cat`, `.actions`)

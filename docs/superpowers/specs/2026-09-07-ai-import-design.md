@@ -2,6 +2,7 @@
 
 **Status:** approved, ready for an implementation plan
 **Supersedes:** nothing. Extends `2026-09-06-yardsale-design.md` §8 (`/admin/items` — bulk queue).
+**Amended 2026-09-09:** the single/bulk toggle was removed, so `/admin/items` is this drop screen outright rather than one of its two tabs. One photo makes one item.
 **Depends on:** the shipped shop at `main`.
 
 The seller drops a pile of photos from one afternoon of shooting. Some are the
@@ -352,7 +353,7 @@ item with no price or no name is refused with the message it already has.
 
 | Condition | Behaviour |
 | --- | --- |
-| `ANTHROPIC_API_KEY` unset | The bulk tab says the feature is off and falls back to today's EXIF grouping. No call attempted. |
+| `ANTHROPIC_API_KEY` unset | `/admin/items` says the feature is off and falls back to today's EXIF grouping. No call attempted. |
 | **Credit or quota exhausted** | See below — treated as its own case, not a generic error. |
 | Clustering call fails or is invalid | Fall back to `groupByCaptureTime`, create items, skip captions, tell the seller copy was not generated. |
 | One caption call fails | That item gets an empty name and description. Other items unaffected. |

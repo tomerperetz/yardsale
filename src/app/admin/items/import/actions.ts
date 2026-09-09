@@ -70,8 +70,11 @@ const ALREADY_PUBLISHED = 'הפריט כבר פורסם ואינו חלק מהי
  * But `bulkEdit` accepts '0', so a seller who deliberately made something free
  * lands here too, and telling them their price is invalid would be a lie about
  * input they chose. So: say what publishing needs, and where a genuinely free
- * item can still be published, which is the single-item form — `updateItem`
- * has no such rule and takes 0 as a price like any other.
+ * item can still be published, which is the item's own edit screen at
+ * /admin/items/[id] — `updateItem`, which `EditItemForm` calls with
+ * `publish: true` for a DRAFT, has no such rule and takes 0 as a price like
+ * any other. That screen is what "מדף הפריט" names, and it is also where
+ * MARKED_SOLD sends a seller, so both messages point at one real place.
  */
 const UNPRICED = 'צריך לקבוע מחיר לפני הפרסום. פריט שניתן בחינם אפשר לפרסם מדף הפריט.'
 
@@ -239,7 +242,7 @@ export async function bulkEdit(itemIds: string[], patch: BulkPatch): Promise<Edi
  * outcome and the refusals come back as a list the screen can point at.
  *
  * Routed through `updateItem` rather than a status flip, which is what keeps
- * the validation and its Hebrew messages identical to the single-item form's
+ * the validation and its Hebrew messages identical to the item edit screen's
  * (spec §7.3) and what gives a draft the proper slug for the name it is being
  * published under.
  *

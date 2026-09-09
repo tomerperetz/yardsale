@@ -245,10 +245,11 @@ export type ImportDropResult = {
  * and this route's alignment of `files` with `takenAt` depends on the order
  * that encoder preserves.
  *
- * Why the spec cannot simply drive the drop zone: `/admin/items?mode=bulk`
- * only renders ImportDrop when ANTHROPIC_API_KEY is set (BulkQueue.tsx), and
- * this suite deliberately runs with it empty — see playwright.config.ts. The
- * review screen everything after this touches is the real UI.
+ * Why the spec cannot simply drive the drop zone: `/admin/items` only renders
+ * ImportDrop when ANTHROPIC_API_KEY is set (page.tsx picks between it and the
+ * capture-time BulkQueue), and this suite deliberately runs with it empty —
+ * see playwright.config.ts. The review screen everything after this touches is
+ * the real UI.
  *
  * SEQUENTIAL ON PURPOSE (spec §7.1): each request numbers its photos from what
  * the batch already holds, so two in flight read the same count and collide.

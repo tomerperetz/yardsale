@@ -33,6 +33,10 @@ import { seedShop, addAdminSession, dropImportPhotos, cleanupImportBatch } from 
  * the bulk bar, publishing, the discard — is the real UI, driven the way the
  * seller drives it.
  *
+ * Since the single/bulk toggle was removed this is also the ONLY way to add an
+ * item, one included: /admin/items is the drop screen and nothing else. The
+ * one-photo test below is that claim, driven end to end.
+ *
  * Capture times are chosen to produce a known grouping: `groupByCaptureTime`
  * puts consecutive photos within 30 seconds of each other in one group.
  */
@@ -59,19 +63,90 @@ test.describe('ai import', () => {
     await seedShop()
   })
 
-  test('the bulk tab says the automatic naming is off when no key is configured', async ({ browser }) => {
+  test('the item screen says the automatic naming is off when no key is configured', async ({ browser }) => {
     const context = await browser.newContext({ locale: 'he-IL' })
     try {
       await addAdminSession(context)
       const page = await context.newPage()
 
-      await page.goto('/admin/items?mode=bulk')
+      await page.goto('/admin/items')
 
       // Spec §7.4, first row: no key means no call is attempted and the seller
       // is told so, rather than being offered a feature that cannot run.
       await expect(page.getByText('הזיהוי האוטומטי כבוי כרגע')).toBeVisible()
     } finally {
       await context.close()
+    }
+  })
+
+  /**
+   * The owner's whole reason for removing the single/bulk toggle: "if user
+   * wants he will upload single item and not multiple." One photo has to make
+   * one listing, through the same screen a hundred photos go through, with no
+   * mode to pick first — so this drives that from the drop to the storefront.
+   *
+   * The toggle's absence is asserted here rather than in its own test because
+   * the two claims are the same claim: there is one way in, and it works.
+   */
+  test('one photo makes one listing, with no mode to choose first', async ({ browser }) => {
+    const context = await browser.newContext({ locale: 'he-IL' })
+    let batchId: string | undefined
+    try {
+      await addAdminSession(context)
+      const page = await context.newPage()
+      await page.goto('/admin/items')
+
+      // The toggle is gone, both halves of it. If either comes back, the
+      // seller is being asked to make a choice again before they can start.
+      await expect(page.getByRole('link', { name: 'פריט אחד' })).toHaveCount(0)
+      await expect(page.getByRole('link', { name: 'העלאה מרוכזת' })).toHaveCount(0)
+      // And the screen says so, so a seller with one thing to sell knows this
+      // is their screen too.
+      await expect(page.getByText('או תמונה אחת לפריט אחד')).toBeVisible()
+
+      const drop = await dropImportPhotos(page, shots(1, 0))
+      batchId = drop.batchId
+      expect(drop.photoIds).toHaveLength(1)
+
+      await page.goto(`/admin/items/import/${batchId}`)
+      await page.getByRole('button', { name: 'קיבוץ התמונות שנותרו לפריטים' }).click()
+
+      // One photo, one cluster, one card — counted by name and not by numeral,
+      // which is the difference between Hebrew and "1 תמונות".
+      const card = page.locator('article')
+      await expect(card).toHaveCount(1)
+      await expect(card).toContainText('תמונה אחת')
+
+      // Unique per run: this database is shared with the unit suite and with
+      // the other project (desktop/mobile).
+      const chair = `כיסא יחיד מהייבוא ${Date.now()}-${process.pid}`
+      await card.getByLabel('שם הפריט').fill(chair)
+      await card.getByLabel('מחיר').fill('120')
+
+      // Straight to publish, no bulk bar: for one item the card IS the form,
+      // and `handlePublish` saves a dirty card before publishing it.
+      //
+      // The finished state, not the transient 'פריט אחד פורסם.' flash: the one
+      // card leaving the list IS the whole import finishing, so the screen has
+      // already moved on by the time an assertion could see the flash. This is
+      // also the singular branch of that sentence, which the two-item test
+      // below cannot reach.
+      await page.getByRole('button', { name: 'פרסום' }).click()
+      await expect(page.getByText('סיימנו. מהייבוא הזה פורסם פריט אחד.')).toBeVisible()
+
+      // The assertion that matters — a buyer can see it, at the price typed,
+      // carrying the one photo that was dropped.
+      await page.goto('/')
+      const shopCard = page.locator('article.card', { hasText: chair })
+      await expect(shopCard).toBeVisible()
+      await expect(shopCard).toContainText('120')
+      await expect(shopCard.locator('img')).toHaveAttribute('src', photoUrl(drop.photoIds[0], 800))
+    } finally {
+      // Never fatal: a test that timed out mid-action closes with a throw, and
+      // an import that skipped its cleanup leaves rows in a database this suite
+      // shares AND files on disk that nothing points at.
+      await context.close().catch(() => {})
+      await cleanupImportBatch(batchId)
     }
   })
 
@@ -87,7 +162,7 @@ test.describe('ai import', () => {
     try {
       await addAdminSession(context)
       const page = await context.newPage()
-      await page.goto('/admin/items?mode=bulk')
+      await page.goto('/admin/items')
 
       // Five seconds apart, so capture-time grouping proposes exactly one item
       // and the whole batch is one photo strip to read the order off.
@@ -151,7 +226,7 @@ test.describe('ai import', () => {
     try {
       await addAdminSession(context)
       const page = await context.newPage()
-      await page.goto('/admin/items?mode=bulk')
+      await page.goto('/admin/items')
 
       // Two capture-time clusters of three: 09:00:00-09:00:10, then twenty
       // minutes later. The gap is what splits them.
@@ -240,7 +315,7 @@ test.describe('ai import', () => {
     try {
       await addAdminSession(context)
       const page = await context.newPage()
-      await page.goto('/admin/items?mode=bulk')
+      await page.goto('/admin/items')
 
       const clustered = await dropImportPhotos(page, shots(3, 0))
       batchId = clustered.batchId

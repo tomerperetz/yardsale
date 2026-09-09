@@ -5,7 +5,6 @@ import { db } from '@/lib/db'
 import { deletePhotoFiles } from '@/lib/images'
 import {
   createItem,
-  openDraft,
   setItemStatus,
   updateItem,
   deleteItem as deleteItemRecord,
@@ -17,20 +16,15 @@ import type { SellableStatus } from '@/lib/admin/item-status'
 
 /**
  * Thin 'use server' wrappers around src/lib/admin/items.ts — client
- * components (ItemForm, BulkQueue, PhotoDrop) can only invoke functions from
- * a file carrying the 'use server' directive, so the validated logic itself
- * stays in the plain, directly-testable lib module and this file just
+ * components (BulkQueue, EditItemForm, PhotoDrop) can only invoke functions
+ * from a file carrying the 'use server' directive, so the validated logic
+ * itself stays in the plain, directly-testable lib module and this file just
  * exposes it plus the photo-management bits that logic doesn't need to know
  * about.
  */
 
 export async function createItemAction(input: ItemInput): Promise<ItemResult> {
   return createItem(input)
-}
-
-/** The entry form's own draft — see `openDraft`, which reuses an unused one. */
-export async function openDraftAction(input: ItemInput): Promise<ItemResult> {
-  return openDraft(input)
 }
 
 export async function updateItemAction(id: string, input: ItemInput): Promise<ItemResult> {

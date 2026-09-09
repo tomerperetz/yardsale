@@ -53,35 +53,6 @@
   margin: 0 0 20px;
 }
 
-.modes {
-  display: inline-flex;
-  background: #f2efec;
-  border-radius: 14px;
-  padding: 4px;
-  gap: 3px;
-  margin-block-end: 22px;
-}
-.modes a {
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  /* Taller than the mockup's 8px — a genuinely tappable mode switch. */
-  padding: 11px 17px;
-  min-height: 40px;
-  border-radius: 11px;
-  color: var(--ink-3);
-  transition: 0.16s;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-}
-.modes a.on {
-  background: #fff;
-  color: var(--ink);
-  box-shadow: var(--sh-1);
-}
-
 /* Scrolls inside itself on a narrow screen rather than widening the page —
    the table's columns don't reflow into stacked cards, but this satisfies
    the same requirement without a second, parallel row layout to maintain. */

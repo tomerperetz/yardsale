@@ -15,9 +15,11 @@ import styles from './import.module.css'
  * sale's worth of photos, this uploads them and asks for the clustering, and
  * the review screen at /admin/items/import/[batchId] is where they land.
  *
- * It replaces the bulk queue's own drop zone whenever ANTHROPIC_API_KEY is
- * set — see BulkQueue.tsx, which still owns the capture-time flow for when
- * it is not.
+ * This is the whole of /admin/items' entry half whenever ANTHROPIC_API_KEY is
+ * set — page.tsx picks between it and BulkQueue.tsx, which still owns the
+ * capture-time flow for when it is not. Dropping a single photo is a
+ * supported use of it, and since the mode toggle went it is the only way to
+ * add one item: one photo makes one cluster, which makes one draft.
  */
 
 type Prepared = { file: File; takenAt: Date | null }

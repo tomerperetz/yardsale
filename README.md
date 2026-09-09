@@ -97,8 +97,8 @@ Set `SESSION_SECRET` to any long random string, e.g. `openssl rand -base64
 optional. It turns on the photo import described below — Claude grouping a
 drop of photos by what is in them and writing the Hebrew name and description
 for each group. Leave it empty and the app boots exactly as it does now, the
-storefront is untouched, and the bulk tab keeps today's capture-time uploader
-instead. Nothing about the shop depends on it, which is why
+storefront is untouched, and `/admin/items` keeps today's capture-time
+uploader instead. Nothing about the shop depends on it, which is why
 `src/instrumentation.ts` does not list it among the variables whose absence
 stops the server.
 
@@ -129,8 +129,10 @@ looks like this:
 2. Go to Settings and fill in the shop name, tagline, BIT phone number,
    address, city, and the three pickup slot hour ranges (morning, afternoon,
    evening).
-3. Upload items — either the single-item form, or the bulk uploader, which is
-   built for uploading straight from a phone's photo gallery.
+3. Upload items — drop the photos on `/admin/items`, which is built for
+   uploading straight from a phone's photo gallery. There is one screen for
+   this and no mode to pick: dropping a single photo is how you add a single
+   item.
 4. The shop is now live at `/`.
 
 Step 2 is not optional, and one part of it is enforced rather than just
@@ -193,14 +195,15 @@ The important consequence for anyone touching this code later: **never
 narrow `accept="image/*"` to something more specific.** It looks like a
 harmless tightening — nothing about it screams "this will break uploads" —
 but it's exactly what disables iOS's free HEIC-to-JPEG transcoding and pushes
-every iPhone upload onto the two weaker fallback layers instead. Both upload
-components (the single-item photo drop and the bulk queue) currently use the
-unnarrowed `accept="image/*"` on purpose.
+every iPhone upload onto the two weaker fallback layers instead. All three
+upload components (the import drop, the capture-time bulk queue, and the edit
+screen's photo drop) currently use the unnarrowed `accept="image/*"` on
+purpose.
 
 ## Importing a whole sale's worth of photos
 
-With `ANTHROPIC_API_KEY` set, the "העלאה מרוכזת" tab in `/admin/items` becomes
-an import: the seller drops up to 60 photos at once, Claude groups them by
+With `ANTHROPIC_API_KEY` set, `/admin/items` becomes an import screen: the
+seller drops up to 60 photos at once, Claude groups them by
 what is in them — twelve shots of one sofa are one item, not twelve — and
 writes a Hebrew headline and description for each group. That lands the
 seller on a review screen at `/admin/items/import/<batch>`, which is where
@@ -316,7 +319,7 @@ To set the project up on Railway:
      3.
    - `ANTHROPIC_API_KEY` — **optional.** Set it to turn on the photo import
      (see above). Leaving it out is a supported configuration, not a broken
-     one: the app boots, the shop works, and the bulk tab falls back to
+     one: the app boots, the shop works, and `/admin/items` falls back to
      grouping photos by capture time.
 5. Deploy. **If this service already has photos from a version before
    the photo-storage change, do "Upgrading an instance that already has

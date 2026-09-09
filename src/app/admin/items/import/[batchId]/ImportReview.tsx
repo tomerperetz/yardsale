@@ -142,7 +142,7 @@ export function ImportReview({
   }
 
   /**
-   * Saves one card through the same `updateItem` the single-item form uses,
+   * Saves one card through the same `updateItem` the item edit screen uses,
    * so the validation and its Hebrew messages are identical here — and so a
    * draft's slug is regenerated from the headline the seller actually kept.
    */

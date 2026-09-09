@@ -5,8 +5,8 @@ import { getSettings } from '@/lib/settings'
 import { aiEnabled } from '@/lib/ai/client'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { photoUrl } from '@/lib/photo-url'
-import { ItemForm } from '@/components/admin/ItemForm'
 import { BulkQueue } from '@/components/admin/BulkQueue'
+import { ImportDrop } from '@/app/admin/items/import/ImportDrop'
 import { PickupWindow } from '@/components/PickupWindow'
 import { Price } from '@/components/Price'
 import { AdminNav } from '@/components/admin/AdminNav'
@@ -34,30 +34,31 @@ function toDateInput(d: Date): string {
 }
 
 /**
- * The seller's item-entry screen: a mode toggle between the single-item form
- * and the bulk queue, plus the item table below. Now wrapped in the shared
- * AdminNav shell (Task 19) — the orders badge needs to be visible from
- * wherever the seller happens to be, and item entry is where they spend
- * most of their time.
+ * The seller's item-entry screen: one drop zone for photos, plus the item
+ * table below. Wrapped in the shared AdminNav shell (Task 19) — the orders
+ * badge needs to be visible from wherever the seller happens to be, and item
+ * entry is where they spend most of their time.
+ *
+ * There used to be a mode toggle here, between a single-item form and this
+ * one. The shop's owner asked for it to go: dropping one photo is how you add
+ * one item, so a second screen for that case was a choice the seller had to
+ * make before they could start, and never a choice worth making. Both halves
+ * of the toggle asked for the same photos.
  *
  * Category and pickup window "carry forward" from the most recently created
- * item (across page loads, not just within one session) so a returning
- * seller doesn't have to re-pick them every visit.
+ * item (across page loads, not just within one session) so a returning seller
+ * doesn't have to re-pick them every visit — see `BulkQueue`, which is where
+ * they are typed. The AI import asks for neither at drop time: its review
+ * screen sets both across the whole batch at once.
  */
 // See src/app/admin/settings/page.tsx for why every admin page is forced
-// dynamic. This one also reads `searchParams`, which already forces it —
-// the export just makes the requirement explicit and future-proof.
+// dynamic. This page no longer reads `searchParams` — the mode toggle was the
+// only thing that did — so the export is now the only thing keeping it out of
+// the static cache, where a stale item table would be actively wrong.
 export const dynamic = 'force-dynamic'
 
-export default async function AdminItemsPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
-}) {
+export default async function AdminItemsPage() {
   await releaseExpiredHolds()
-
-  const params = await searchParams
-  const mode = params.mode === 'bulk' ? 'bulk' : 'single'
 
   const [items, categories, lastItem, settings, claimedCount] = await Promise.all([
     db.item.findMany({
@@ -79,9 +80,17 @@ export default async function AdminItemsPage({
   const categoryNames = categories.map((c) => c.name)
   // Read once per render on the server: a key added to the environment starts
   // working on the next page load, and its absence never reaches the browser
-  // as a broken feature — the bulk tab falls back to capture-time grouping.
+  // as a broken feature — the screen falls back to capture-time grouping.
+  //
+  // Branching HERE rather than inside BulkQueue, which is where this choice
+  // used to live as an `aiEnabled` prop and an early return. The server is
+  // what reads the key, so the server is what should pick; a client component
+  // taking a flag purely to render a different component instead of itself is
+  // indirection, and it forced that return to sit below every hook in the
+  // file with a comment explaining why it could not move. (It does NOT save
+  // the browser any JavaScript: both are statically imported, so Next puts
+  // both in this page's chunk either way. Checked, not assumed.)
   const aiImport = aiEnabled()
-  const listedCount = items.filter((i) => i.status === 'AVAILABLE' || i.status === 'RESERVED').length
 
   return (
     <>
@@ -106,41 +115,31 @@ export default async function AdminItemsPage({
           <main className={styles.shell}>
             <section className={styles.panel}>
               <div className={styles.ptitle}>
-                <h2>{mode === 'single' ? 'פריט חדש' : 'העלאה מרוכזת'}</h2>
-                {initialCategory !== '' && <span className="carry">שדות ממשיכים מהפריט הקודם</span>}
+                <h2>הוספת פריטים</h2>
+                {/* Only the capture-time queue actually carries these forward —
+                    it is where a category and a pickup window are typed. The AI
+                    import sets both on the review screen, across the batch, so
+                    promising it here would be a promise about another screen. */}
+                {!aiImport && initialCategory !== '' && (
+                  <span className="carry">שדות ממשיכים מהפריט הקודם</span>
+                )}
               </div>
+              {/* One item is one photo — said out loud, because this screen
+                  replaced a form that used to be the obvious place for it. */}
               <p className={styles.psub}>
-                {mode === 'single'
-                  ? 'גוררים תמונות, ממלאים ארבעה שדות, שומרים וממשיכים לבא. הקטגוריה וחלון האיסוף נשמרים אוטומטית.'
-                  : aiImport
-                    ? 'גוררים את כל התמונות בבת אחת. נחלק אותן לפריטים, נכתוב לכל פריט שם ותיאור, ואתם מתקנים ומפרסמים ממסך אחד.'
-                    : 'גוררים את כל התמונות בבת אחת. כל קבוצה נפתחת כפריט, ואתם יורדים בתור וממלאים רק את מה שמשתנה.'}
+                {aiImport
+                  ? 'גוררים את כל התמונות בבת אחת, או תמונה אחת לפריט אחד. נחלק אותן לפריטים, נכתוב לכל פריט שם ותיאור, ואתם מתקנים ומפרסמים ממסך אחד.'
+                  : 'גוררים את כל התמונות בבת אחת, או תמונה אחת לפריט אחד. כל קבוצה נפתחת כפריט, ואתם יורדים בתור וממלאים רק את מה שמשתנה.'}
               </p>
 
-              <div className={styles.modes}>
-                <Link href="/admin/items" className={mode === 'single' ? styles.on : undefined}>
-                  פריט אחד
-                </Link>
-                <Link href="/admin/items?mode=bulk" className={mode === 'bulk' ? styles.on : undefined}>
-                  העלאה מרוכזת
-                </Link>
-              </div>
-
-              {mode === 'single' ? (
-                <ItemForm
-                  categories={categoryNames}
-                  initialCategory={initialCategory}
-                  initialPickupFrom={initialPickupFrom}
-                  initialPickupTo={initialPickupTo}
-                  itemCount={listedCount}
-                />
+              {aiImport ? (
+                <ImportDrop />
               ) : (
                 <BulkQueue
                   categories={categoryNames}
                   initialCategory={initialCategory}
                   initialPickupFrom={initialPickupFrom}
                   initialPickupTo={initialPickupTo}
-                  aiEnabled={aiImport}
                 />
               )}
             </section>

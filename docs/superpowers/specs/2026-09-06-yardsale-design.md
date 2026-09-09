@@ -52,7 +52,7 @@ Explicitly out of scope. Each is a deliberate exclusion, not an oversight:
 | Quantity | Always 1 |
 | Pricing | Fixed, integer agorot |
 | Item detail | Quick-look overlay via an intercepting route, with a real shareable URL |
-| Upload | Both a single-item form and a bulk queue |
+| Upload | One screen — a photo drop. Dropping a single photo adds a single item |
 | Bulk grouping | Photos auto-grouped by EXIF capture time, correctable by hand |
 | Sold items | Stay inline in the grid, desaturated, marked נמכר |
 | Shop name & address | Not in the spec or the code. Set by the seller in admin settings; the address renders publicly once set |
@@ -331,13 +331,23 @@ Password only. Argon2id verify against `ADMIN_PASSWORD_HASH`, constant-time. Rat
 per IP — 10 attempts per 15 minutes — then a signed httpOnly, `SameSite=Lax`, `Secure`
 session cookie with a 30-day lifetime.
 
-### `/admin/items` — single form
+### `/admin/items` — the photo drop
 
-Drag-and-drop photo zone: photos reorderable, the first marked ראשי, each removable.
-Name, description, category, price, pickup range. On save the form clears but **carries
-forward the category and the pickup range**, because those repeat across a sitting.
-Primary action is שמירה והפריט הבא; שמירה כטיוטה leaves the item in `DRAFT`, invisible
-to buyers.
+**Superseded 2026-09-09** (owner's request, one line: "no need to separate bulk upload
+from single item upload"). There was a mode toggle here — a single-item form on one side,
+the queue below on the other — and it is gone. `/admin/items` is the drop screen and
+nothing else; **dropping one photo is how you add one item**, so the case the single form
+existed for is served by the same screen as the case it did not.
+
+The single form's own behaviours did not survive it and were not meant to: it opened a
+`DRAFT` row per mount to hang uploads on, and its שמירה והפריט הבא / שמירה כטיוטה pair had
+no equivalent here. Everything an existing item needs — reorder photos, edit every field,
+publish a `DRAFT`, delete — is at `/admin/items/[id]`, which is unchanged and is what the
+import's "מדף הפריט" messages point at.
+
+Carrying **the category and the pickup range** forward from the last item survives, in the
+capture-time queue below, because those still repeat across a sitting. The AI import asks
+for neither at drop time: its review screen sets both across the whole batch at once.
 
 ### `/admin/items` — bulk queue
 

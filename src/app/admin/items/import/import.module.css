@@ -277,8 +277,8 @@
 
 /*
  * The shekel sign sits beside the field rather than inside its value, exactly
- * as it does in ItemForm — "₪ 90" typed into an RTL input renders as "90 ₪",
- * and the approved mockups put the sign first.
+ * as it does in admin.module.css's own .money — "₪ 90" typed into an RTL input
+ * renders as "90 ₪", and the approved mockups put the sign first.
  */
 .money {
   position: relative;

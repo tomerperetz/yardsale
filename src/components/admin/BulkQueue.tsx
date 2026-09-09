@@ -6,7 +6,6 @@ import { readTakenAt } from '@/lib/exif-client'
 import { convertHeicIfNeeded } from '@/lib/heic-client'
 import { groupByCaptureTime, type PhotoStamp } from '@/lib/exif'
 import { createItemAction, updateItemAction } from '@/app/admin/items/actions'
-import { ImportDrop } from '@/app/admin/items/import/ImportDrop'
 import { MAX_BYTES, MAX_PHOTOS_PER_ITEM, MAX_REQUEST_BYTES } from '@/lib/photo-url'
 import styles from './admin.module.css'
 
@@ -21,25 +20,29 @@ type StepResult = UploadResult & { published: boolean }
  * walk the queue one item at a time — each step creates and publishes one
  * item and uploads its group's photos to it.
  *
- * This is now the FALLBACK flow. When ANTHROPIC_API_KEY is set the same tab
- * hands the seller the AI import instead (ImportDrop → the review screen),
- * which groups the photos by what is in them and writes the copy. Without a
- * key none of that can happen, so the tab says so and this queue takes over —
- * spec §7.4's first row.
+ * This is the FALLBACK flow, and only that. When ANTHROPIC_API_KEY is set,
+ * /admin/items renders ImportDrop instead (→ the review screen), which groups
+ * the photos by what is in them and writes the copy. Without a key none of
+ * that can happen, so this queue takes over and says so — spec §7.4's first
+ * row. That choice is the page's to make, not this component's: it used to be
+ * an `aiEnabled` prop and an early return here, which is how a component that
+ * renders the capture-time queue ended up also deciding whether to render the
+ * capture-time queue at all.
+ *
+ * Do not delete this because the owner's key is set. A key can be removed,
+ * run out of credit, or never be added by whoever installs this next, and the
+ * spec makes its absence a supported configuration rather than a broken one.
  */
 export function BulkQueue({
   categories,
   initialCategory,
   initialPickupFrom,
   initialPickupTo,
-  aiEnabled,
 }: {
   categories: string[]
   initialCategory: string
   initialPickupFrom: string
   initialPickupTo: string
-  /** Whether the AI import is configured — `aiEnabled()` from src/lib/ai/client.ts. */
-  aiEnabled: boolean
 }) {
   const router = useRouter()
   const inputId = useId()
@@ -247,11 +250,6 @@ export function BulkQueue({
     setPending(false)
     setPhase('result')
   }
-
-  // After every hook above, never before: the branch is a constant for the
-  // life of the mount (the server reads the key once per render), but React's
-  // hook order must not depend on it even so.
-  if (aiEnabled) return <ImportDrop />
 
   return (
     <div>

@@ -36,9 +36,10 @@ const DEFAULT_WINDOW_DAYS = 6
 const DAY_MS = 86_400_000
 
 /**
- * The category a shop with no categories at all falls back to. The same string
- * ItemForm.tsx uses for the same reason: an item needs a category and a brand
- * new shop has none, so importing before ever adding an item must still work.
+ * The category a shop with no categories at all falls back to: an item needs
+ * one, and a brand new shop has none, so importing before a single category
+ * has ever been typed must still work. Now the only definition of it — the
+ * single-item form carried a copy of this string until that form was removed.
  */
 const FALLBACK_CATEGORY = 'כללי'
 

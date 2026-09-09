@@ -3,7 +3,6 @@ import { db } from '@/lib/db'
 import { parseShekelInput } from '@/lib/money'
 import { hebrewSlug, randomSuffix } from '@/lib/slug'
 import { deletePhotoFiles } from '@/lib/images'
-import { DRAFT_NAME } from '@/lib/admin/draft'
 import { SELLABLE_STATUSES, type SellableStatus } from '@/lib/admin/item-status'
 
 export type ItemInput = {
@@ -29,7 +28,7 @@ export function normalizeCategoryName(raw: string): string {
  * An `<input type="date">` value as the UTC-midnight Date the schema stores.
  *
  * Exported so the import screen's bulk edit validates a pickup window by the
- * same rule as the single-item form, rather than growing a second parser that
+ * same rule as every other caller, rather than growing a second parser that
  * accepts a shape this one rejects.
  */
 export function parseDate(raw: string): Date | null {
@@ -110,52 +109,26 @@ export async function createItem(input: ItemInput): Promise<ItemResult> {
   })
 }
 
-/**
- * Hands the "new item" form the row its photo uploads target.
- *
- * Creating one per mount meant every load of /admin/items left a "פריט חדש"
- * row behind — opening the orders tab and coming back was enough — and the
- * seller's list filled with items they never made. An untouched draft is
- * indistinguishable from a fresh one, so reuse it rather than add another.
- * "Untouched" is deliberately narrow: once a photo lands on a draft, or the
- * seller renames it, it is theirs and the next form gets its own row.
- *
- * `importBatchId: null` narrows it further, to drafts this form itself opened.
- * An imported draft whose last photo the seller moved away is otherwise
- * exactly the shape looked for here — DRAFT, still called DRAFT_NAME, no
- * photos — and the review screen invites that move on every card; every
- * degraded import path leaves its items named DRAFT_NAME too. Reusing one
- * would build a hand-typed listing on a row that still belongs to a batch, and
- * the batch discard would later throw it away with the rest of that import.
- */
-export async function openDraft(input: ItemInput): Promise<ItemResult> {
-  const reusable = await db.item.findFirst({
-    where: { status: ItemStatus.DRAFT, name: DRAFT_NAME, photos: { none: {} }, importBatchId: null },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, slug: true },
-  })
-  if (reusable) return { ok: true, id: reusable.id, slug: reusable.slug }
-  return createItem(input)
-}
-
 export async function updateItem(id: string, input: ItemInput): Promise<ItemResult> {
   const v = validate(input)
   if ('error' in v) return { ok: false, error: v.error }
 
   return db.$transaction(async (tx) => {
-    // The single-item form (ItemForm.tsx) creates the item as a DRAFT with a
-    // placeholder name before the seller has typed anything real, so its
-    // slug — assigned once, at creation — is worthless until the first real
-    // save. Read the status BEFORE this update to decide: while an item has
-    // never left DRAFT its slug is disposable, so regenerate it from the
-    // real name on every save (this is also what makes the very save that
-    // publishes a draft — this call, with input.publish true — land on a
-    // proper Hebrew slug instead of the placeholder). Once an item has ever
-    // left DRAFT, freeze its slug permanently: buyers share item URLs into
-    // WhatsApp groups, and silently regenerating one on a later name edit
-    // would break every link already shared, with no way for whoever shared
-    // it to find out. This is deliberate, not an oversight — do not "fix"
-    // it by regenerating unconditionally.
+    // The import creates its items as DRAFTs named DRAFT_NAME before the
+    // seller (or the model) has supplied anything real — `clusterBatch` and
+    // `movePhoto(_, 'new')` both do — so their slugs, assigned once at
+    // creation, are worthless until the first real save. The bulk queue is
+    // the same story with a real name but no photos yet. Read the status
+    // BEFORE this update to decide: while an item has never left DRAFT its
+    // slug is disposable, so regenerate it from the real name on every save
+    // (this is also what makes the very save that publishes a draft — this
+    // call, with input.publish true — land on a proper Hebrew slug instead
+    // of the placeholder). Once an item has ever left DRAFT, freeze its slug
+    // permanently: buyers share item URLs into WhatsApp groups, and silently
+    // regenerating one on a later name edit would break every link already
+    // shared, with no way for whoever shared it to find out. This is
+    // deliberate, not an oversight — do not "fix" it by regenerating
+    // unconditionally.
     const current = await tx.item.findUnique({ where: { id }, select: { status: true } })
 
     const item = await tx.item.update({
