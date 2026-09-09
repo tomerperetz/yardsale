@@ -3,7 +3,17 @@ import { OrderStatus, ItemStatus } from '@prisma/client'
 const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.PENDING_PAYMENT]: [OrderStatus.CLAIMED_PAID, OrderStatus.EXPIRED, OrderStatus.CANCELLED],
   [OrderStatus.CLAIMED_PAID]: [OrderStatus.PAID, OrderStatus.CANCELLED],
-  [OrderStatus.PAID]: [],
+  // PAID is not terminal, but it is the one cancellation that undoes a
+  // finished sale rather than releasing a hold: the seller has the money and
+  // the items are SOLD. Cancelling puts those items back on the shop for
+  // anyone to buy, and NOTHING here records the refund now owed — no balance,
+  // no reminder, no reconciliation. The order keeps both stamps (`confirmedAt`
+  // and `cancelledAt`), which is the only trace left that money changed hands
+  // and now has to go back; OrderRowActions.tsx reads them to warn the seller
+  // before the fact and to keep the WhatsApp button after it. Do not add
+  // PAID -> anything else: the sale either stands or is undone whole, and it
+  // is never re-opened.
+  [OrderStatus.PAID]: [OrderStatus.CANCELLED],
   [OrderStatus.EXPIRED]: [],
   [OrderStatus.CANCELLED]: [],
 }

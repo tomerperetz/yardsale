@@ -13,6 +13,8 @@ export type OrderForMessage = {
   status: OrderStatus
   /** Optional: only PENDING_PAYMENT orders carry one, and only that message reads it. */
   holdExpiresAt?: Date | null
+  /** Optional: set once the seller confirmed the payment. A CANCELLED order that carries one is a refund. */
+  confirmedAt?: Date | null
 }
 
 /** Only the settings fields a WhatsApp message ever needs to read. */
@@ -123,6 +125,17 @@ export function messageForOrder(order: OrderForMessage, settings: SettingsForMes
       )
 
     case OrderStatus.CANCELLED:
+      // A cancelled order the seller had already confirmed is the one case
+      // where the buyer is owed money, and this message is the only place the
+      // app ever says so — nothing tracks the refund afterwards. Saying the
+      // amount out loud is the point: it is what the buyer will hold the
+      // seller to, and what the seller sees before sending.
+      if (order.confirmedAt) {
+        return (
+          `היי ${order.buyerName}, ההזמנה ${order.code}${shop} בוטלה אחרי שהתשלום כבר אושר. ` +
+          `נחזיר לך ${formatAgorot(order.totalAgorot)} בביט בהקדם. מצטערים על אי הנוחות!`
+        )
+      }
       return `היי ${order.buyerName}, ההזמנה ${order.code}${shop} בוטלה. את/ה מוזמן/ת להזמין מחדש בכל עת.`
   }
 }

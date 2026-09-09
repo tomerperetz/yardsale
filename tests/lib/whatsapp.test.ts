@@ -103,4 +103,24 @@ describe('messageForOrder', () => {
     const msg = messageForOrder({ ...order, status: OrderStatus.PENDING_PAYMENT }, settings)
     expect(msg).not.toContain('דקות')
   })
+
+  it('invites a cancelled order back without promising money that never moved', () => {
+    const msg = messageForOrder({ ...order, status: OrderStatus.CANCELLED }, settings)
+    expect(msg).toContain('בוטלה')
+    expect(msg).toContain('להזמין מחדש')
+    expect(msg).not.toContain('₪1,680')
+  })
+
+  // A cancellation of a sale the seller had already confirmed is the only
+  // place in the whole app that says a refund is owed — nothing tracks it
+  // afterwards — so the amount goes in the message the seller sends.
+  it('promises the refund, with the amount, when the cancelled order had been paid', () => {
+    const msg = messageForOrder(
+      { ...order, status: OrderStatus.CANCELLED, confirmedAt: new Date('2026-09-09T08:00:00Z') },
+      settings,
+    )
+    expect(msg).toContain('בוטלה')
+    expect(msg).toContain('₪1,680')
+    expect(msg).not.toContain('להזמין מחדש')
+  })
 })

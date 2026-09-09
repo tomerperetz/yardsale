@@ -236,6 +236,47 @@
   color: #9b3a20;
   text-align: end;
 }
+
+/* The in-row confirmation, same inline pattern as the import screen's
+   delete: the question replaces the row's buttons rather than floating over
+   them, so the decision is made where the order's own code, buyer and amount
+   are still on screen. `max-width` is what stops the paid-order wording —
+   the long one, and deliberately so — from stretching the actions column and
+   squeezing every other cell of the table. */
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 34ch;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  text-align: start;
+  white-space: normal;
+}
+.confirm b {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: 13px;
+}
+/* Undoing a confirmed sale is not the same act as releasing a hold, so it
+   does not look like one. */
+.heavy {
+  background: #fdf1ec;
+  border: 1px solid #f3cdbd;
+  border-radius: var(--r-md);
+  padding: 9px 11px;
+  max-width: 40ch;
+}
+.rowbtn.danger {
+  color: #9b3a20;
+  border-color: #e8c3b6;
+}
+.rowbtn.danger:hover {
+  background: #fdf1ec;
+  border-color: #9b3a20;
+  color: #9b3a20;
+}
 .rowbtn {
   border: 1px solid var(--line);
   background: #fff;

@@ -13,10 +13,19 @@ describe('canTransition', () => {
     expect(canTransition(OrderStatus.CLAIMED_PAID, OrderStatus.EXPIRED)).toBe(false)
   })
 
-  it('allows the seller to cancel any order that has not been paid', () => {
+  it('allows the seller to cancel any live order, a paid one included', () => {
     expect(canTransition(OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED)).toBe(true)
     expect(canTransition(OrderStatus.CLAIMED_PAID, OrderStatus.CANCELLED)).toBe(true)
-    expect(canTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).toBe(false)
+    expect(canTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).toBe(true)
+  })
+
+  // Cancelling is the only thing a confirmed sale can do. Re-opening one —
+  // back to a hold, or to "the buyer says they paid" — would put items the
+  // seller has already been paid for back under a clock.
+  it('lets a paid order be cancelled and nothing else', () => {
+    for (const to of Object.values(OrderStatus)) {
+      expect(canTransition(OrderStatus.PAID, to)).toBe(to === OrderStatus.CANCELLED)
+    }
   })
 
   it('never moves out of a terminal state', () => {

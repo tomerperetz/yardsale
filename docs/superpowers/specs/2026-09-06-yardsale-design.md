@@ -210,12 +210,20 @@ PENDING_PAYMENT ──────────► CLAIMED_PAID ─────�
    EXPIRED                       │
  (items → AVAILABLE)             │
                                  ▼
-                            CANCELLED  ◄── seller, from any non-PAID state
-                          (items → AVAILABLE)
+                            CANCELLED  ◄── seller, from any live state
+                          (items → AVAILABLE)      (PAID included)
 ```
 
 `holdExpiresAt` is set to `now() + Settings.holdMinutes` at checkout and set to `null`
 on the transition to `CLAIMED_PAID`. Only `PENDING_PAYMENT` orders are ever swept.
+
+`PAID → CANCELLED` is the one cancellation that undoes a finished sale rather than
+releasing a hold: the seller has the money, the items are `SOLD`, and cancelling puts
+them back on the shop for anyone to buy. The order keeps both `confirmedAt` and
+`cancelledAt` — the only record that money moved and now has to move back, since
+nothing here tracks refunds. `/admin/orders` asks for that one in its own words
+(buyer, amount, items back on sale, refund is yours to make) rather than with the
+one-line confirmation the other two get.
 
 ### Reserving atomically
 
@@ -338,7 +346,11 @@ those are the ones needing action.
 
 Per row: a **וואטסאפ** button (a `wa.me` deep link with a pre-written Hebrew message that
 varies by order state), **אישור תשלום** which moves the order to `PAID` and its items to
-`SOLD`, and **ביטול** which releases the items.
+`SOLD`, and **ביטול** which releases the items. **ביטול** is offered on every live row,
+`PAID` included; from there it reverses a completed sale, so it asks a different, fuller
+question first (§6). A cancelled order that had been confirmed keeps its **וואטסאפ**
+button, whose message tells the buyer the refund is coming — the app has no other way to
+say it.
 
 The sidebar badge counts orders in `CLAIMED_PAID`.
 

@@ -16,6 +16,7 @@ import {
   deleteItem,
   normalizeCategoryName,
 } from '@/lib/admin/items'
+import { cancelOrder } from '@/lib/orders/transitions'
 import { DRAFT_NAME } from '@/lib/admin/draft'
 import { utcDate } from '@/lib/dates'
 
@@ -302,6 +303,23 @@ describe('setItemStatus', () => {
     const result = await setItemStatus(item.id, 'AVAILABLE')
     expect(result.ok).toBe(false)
     expect(await statusOf(item.id)).toBe(ItemStatus.SOLD)
+  })
+
+  // The other half of cancelling a confirmed sale (spec §6): the order stops
+  // counting as live, so the guard above lets go and the item is the
+  // seller's to move again — hide it, or mark it sold to whoever is standing
+  // in front of them.
+  it('lets the seller move an item again once the paid order holding it was cancelled', async () => {
+    const item = await makeItem({ status: ItemStatus.SOLD })
+    const order = await makeOrder([item.id], { status: OrderStatus.PAID, holdExpiresAt: null })
+
+    expect((await setItemStatus(item.id, 'AVAILABLE')).ok).toBe(false)
+
+    expect(await cancelOrder(order.id)).toEqual({ ok: true })
+
+    expect(await statusOf(item.id)).toBe(ItemStatus.AVAILABLE)
+    expect((await setItemStatus(item.id, 'HIDDEN')).ok).toBe(true)
+    expect(await statusOf(item.id)).toBe(ItemStatus.HIDDEN)
   })
 
   it('lets the seller move an item whose only order was cancelled', async () => {

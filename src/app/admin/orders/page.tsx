@@ -218,6 +218,9 @@ export default async function AdminOrdersPage({
                                 orderId={order.id}
                                 token={order.token}
                                 status={order.status}
+                                buyerName={order.buyerName}
+                                totalAgorot={order.totalAgorot}
+                                paymentConfirmed={order.confirmedAt !== null}
                                 waHref={waHref}
                               />
                             </td>

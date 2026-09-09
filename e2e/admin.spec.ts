@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import {
   seedShop,
   makeAvailableItem,
@@ -10,6 +10,17 @@ import {
   addAdminSession,
   adminTestPassword,
 } from './fixtures'
+
+/**
+ * The number in one of the four stat tiles on /admin/orders, by its label.
+ * Read as a delta rather than an absolute: this suite shares one database
+ * with whatever else is in it, so "the paid total went up by ₪550 and back
+ * down again" is the only claim about them that can be made honestly.
+ */
+async function tileValue(page: Page, label: string): Promise<number> {
+  const text = (await page.getByText(label, { exact: true }).locator('..').textContent()) ?? ''
+  return Number(text.replace(/\D/g, ''))
+}
 
 test.describe('admin', () => {
   test.beforeEach(async () => {
@@ -82,6 +93,79 @@ test.describe('admin', () => {
     } finally {
       await context.close()
       await cleanupOrders([order.token])
+      await cleanupItems([item.id])
+    }
+  })
+
+  /**
+   * The seller undoing a sale they already confirmed (spec §6): the money
+   * comes off the tiles, the items go back on the shop, and the next buyer
+   * can actually buy them — driven end to end rather than asserted at the
+   * order row, because "back on sale" is a claim about the storefront.
+   *
+   * Runs at 390px too (see playwright.config.ts's mobile project), where the
+   * orders table is a stack of cards and this confirmation is the longest
+   * thing in one.
+   */
+  test('cancelling a confirmed order refunds the tiles and puts its item back on sale', async ({ browser }) => {
+    const { item, order } = await makeClaimedOrder({ name: 'אופני הרים', price: 55000, category: 'ספורט' })
+    const tokens: string[] = [order.token]
+
+    const context = await browser.newContext({ locale: 'he-IL' })
+    try {
+      await addAdminSession(context)
+      const page = await context.newPage()
+
+      await page.goto('/admin/orders')
+      const paidBefore = await tileValue(page, 'שולם עד עכשיו')
+      const soldBefore = await tileValue(page, 'פריטים נמכרו')
+
+      const row = page.getByRole('row', { name: new RegExp(order.code) })
+      await row.getByRole('button', { name: 'אישור תשלום' }).click()
+      await expect(row.getByText('שולם')).toBeVisible()
+      await expect.poll(() => tileValue(page, 'שולם עד עכשיו')).toBe(paidBefore + 550)
+      await expect.poll(() => tileValue(page, 'פריטים נמכרו')).toBe(soldBefore + 1)
+
+      // The seller is told what this one costs before it happens: who paid,
+      // how much, that the items go back on sale, and that the refund is
+      // theirs to make and nothing here will chase it.
+      await row.getByRole('button', { name: 'ביטול' }).click()
+      await expect(row.getByText('לבטל מכירה שכבר אושרה?')).toBeVisible()
+      await expect(row).toContainText('קונה קלוד')
+      await expect(row).toContainText('₪550')
+      await expect(row).toContainText('יחזיר את הפריטים למכירה')
+      await expect(row).toContainText('האתר לא עוקב אחרי החזרים')
+
+      await row.getByRole('button', { name: 'כן, לבטל ולהחזיר את הכסף' }).click()
+      await expect(row.getByText('בוטל')).toBeVisible()
+      await expect.poll(() => tileValue(page, 'שולם עד עכשיו')).toBe(paidBefore)
+      await expect.poll(() => tileValue(page, 'פריטים נמכרו')).toBe(soldBefore)
+
+      // The refund is the only thing left to say, so the row keeps the one
+      // way this app has of saying it.
+      await expect(row.getByRole('link', { name: 'וואטסאפ' })).toBeVisible()
+
+      // And the item is genuinely for sale again — not merely un-greyed.
+      await page.goto('/')
+      const card = page.locator('article.card', { hasText: item.name })
+      await expect(card).toBeVisible()
+      await expect(card).not.toHaveClass(/sold/)
+
+      await page.getByText(item.name).click()
+      await page.getByRole('button', { name: 'הוספה לסל' }).click()
+      await page.goto('/cart')
+      await page.getByRole('link', { name: 'המשך לפרטים ואיסוף' }).click()
+      await page.getByLabel('שם מלא').fill('קונה שני')
+      await page.getByLabel('טלפון').fill('052-741-8830')
+      await page.getByRole('button', { name: '15', exact: true }).click()
+      await page.getByRole('button', { name: 'אחה״צ' }).click()
+      await page.getByRole('button', { name: 'שריון הפריטים והמשך' }).click()
+
+      await expect(page).toHaveURL(/\/pay\//)
+      tokens.push(page.url().split('/pay/')[1]?.split(/[/?#]/)[0] ?? '')
+    } finally {
+      await context.close()
+      await cleanupOrders(tokens)
       await cleanupItems([item.id])
     }
   })
