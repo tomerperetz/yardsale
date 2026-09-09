@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { photoUrl } from '@/lib/photo-url'
 import { DRAFT_NAME } from '@/lib/admin/draft'
@@ -84,6 +84,43 @@ export function ImportReview({
   // way the AI client compares them — whitespace collapsed and a leading "ה"
   // dropped — so that editing "ריהוט" to "הריהוט" does not suddenly flag it as
   // new, and so a seller who types an existing name by hand sees no warning.
+  // The photo the seller is looking at full size, and the strip it came from,
+  // so the arrows can walk that item's photos without closing. `origin` is the
+  // element to hand focus back to — a viewer that dumps a keyboard user at the
+  // top of a long review screen is worse than no viewer.
+  const [viewing, setViewing] = useState<{ ids: string[]; index: number } | null>(null)
+  const viewerOrigin = useRef<HTMLElement | null>(null)
+
+  const openViewer = (ids: string[], index: number, origin: HTMLElement | null) => {
+    viewerOrigin.current = origin
+    setViewing({ ids, index })
+  }
+  const closeViewer = useCallback(() => {
+    setViewing(null)
+    viewerOrigin.current?.focus()
+    viewerOrigin.current = null
+  }, [])
+  const stepViewer = useCallback((by: number) => {
+    setViewing((current) => {
+      if (current === null) return current
+      const next = (current.index + by + current.ids.length) % current.ids.length
+      return { ...current, index: next }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (viewing === null) return
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') closeViewer()
+      // The document is RTL, so the arrow that points at the next photo on
+      // screen is the LEFT one. Reading order, not array order.
+      if (event.key === 'ArrowLeft') stepViewer(1)
+      if (event.key === 'ArrowRight') stepViewer(-1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [viewing, closeViewer, stepViewer])
+
   const newCategoryKeys = new Set(newCategories.map(normalizeForCompare))
   const isNewCategory = (name: string) => {
     const key = normalizeForCompare(name)
@@ -496,7 +533,14 @@ export function ImportReview({
             {loose.map((photo) => (
               <div key={photo.id} className={styles.shot}>
                 <div className={styles.thumb}>
-                  <img src={photoUrl(photo.id)} alt="" style={{ backgroundImage: `url(${photo.lqip})` }} />
+                  <button
+                    type="button"
+                    className={styles.zoom}
+                    onClick={(e) => openViewer(loose.map((p) => p.id), loose.indexOf(photo), e.currentTarget)}
+                    aria-label="הגדלת התמונה"
+                  >
+                    <img src={photoUrl(photo.id)} alt="" style={{ backgroundImage: `url(${photo.lqip})` }} />
+                  </button>
                   <button
                     type="button"
                     className={styles.rm}
@@ -562,7 +606,16 @@ export function ImportReview({
                   {item.photos.map((photo, photoIndex) => (
                     <div key={photo.id} className={styles.shot}>
                       <div className={photoIndex === 0 ? `${styles.thumb} ${styles.cover}` : styles.thumb}>
-                        <img src={photoUrl(photo.id)} alt="" style={{ backgroundImage: `url(${photo.lqip})` }} />
+                        <button
+                          type="button"
+                          className={styles.zoom}
+                          onClick={(e) =>
+                            openViewer(item.photos.map((p) => p.id), photoIndex, e.currentTarget)
+                          }
+                          aria-label="הגדלת התמונה"
+                        >
+                          <img src={photoUrl(photo.id)} alt="" style={{ backgroundImage: `url(${photo.lqip})` }} />
+                        </button>
                         <button
                           type="button"
                           className={styles.rm}
@@ -905,6 +958,48 @@ export function ImportReview({
           </>
         )}
       </div>
+
+      {viewing !== null && (
+        // Judging whether a cluster is right means comparing its photos
+        // against each other, so the arrows walk the strip rather than making
+        // the seller close and reopen for every one.
+        <div
+          className={styles.viewer}
+          role="dialog"
+          aria-modal="true"
+          aria-label="תצוגת תמונה"
+          onClick={closeViewer}
+        >
+          <div className={styles.viewerBar}>
+            <span>
+              {viewing.index + 1} / {viewing.ids.length}
+            </span>
+            <button type="button" className={styles.viewerClose} onClick={closeViewer} aria-label="סגירה">
+              ✕
+            </button>
+          </div>
+
+          <img
+            className={styles.viewerImg}
+            src={photoUrl(viewing.ids[viewing.index], 1600)}
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+          />
+
+          {viewing.ids.length > 1 && (
+            <div className={styles.viewerNav} onClick={(e) => e.stopPropagation()}>
+              {/* In an RTL document the arrow pointing at the NEXT photo is
+                  the left one — reading order, not array order. */}
+              <button type="button" onClick={() => stepViewer(-1)} aria-label="התמונה הקודמת">
+                ›
+              </button>
+              <button type="button" onClick={() => stepViewer(1)} aria-label="התמונה הבאה">
+                ‹
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

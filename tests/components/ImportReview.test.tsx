@@ -306,6 +306,41 @@ describe('the import review screen', () => {
     expect(screen.getByText('לרשימת הפריטים').getAttribute('href')).toBe('/admin/items')
   })
 
+  it('opens a photo full size, and closes on Escape', () => {
+    renderReview()
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(screen.getAllByLabelText('הגדלת התמונה')[0])
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeTruthy()
+    expect(screen.getByText('1 / 2')).toBeTruthy()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('walks that item\'s photos without closing, and wraps around', () => {
+    renderReview()
+    fireEvent.click(screen.getAllByLabelText('הגדלת התמונה')[0])
+    expect(screen.getByText('1 / 2')).toBeTruthy()
+
+    // RTL: the arrow pointing at the next photo on screen is the LEFT one.
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.getByText('2 / 2')).toBeTruthy()
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.getByText('1 / 2')).toBeTruthy()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+  })
+
+  it('does not open the viewer when the seller means to remove the photo', () => {
+    // The two things you can do to a photo sit a few pixels apart. Removing
+    // one must not also throw it up full screen.
+    renderReview()
+    fireEvent.click(screen.getAllByLabelText('הסרת התמונה')[0])
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('flags a category this import invented, so the seller sees it before accepting', () => {
     renderReview({ newCategories: ['ריהוט'] })
     expect(screen.getAllByText(/קטגוריה חדשה/).length).toBeGreaterThan(0)
