@@ -295,9 +295,14 @@ has three guards rather than a confirmation dialogue:
 - **One at a time.** A second press while the first is still running is
   refused server-side. The button's own disabled state is client state, and a
   cut connection clears it while the server is still working.
-- **Never the same item twice.** Every description a model writes — here or on
-  the way in — is stamped, and only unstamped items are offered. A failed call
-  stamps nothing, so it comes back around.
+- **Never the same item twice, and never endlessly.** Every description a
+  model writes — here or on the way in — is stamped, and only unstamped items
+  are offered. A failed call stamps nothing, so it comes back around: a
+  network blip deserves a retry. But selection is deterministic, so an item
+  the model will never describe would be picked first on every press, paid for
+  every time, while the screen went on saying "press again". Two failed
+  attempts and an item stops being offered. Running out of credit never counts
+  as one of them — the model never saw the item.
 
 Sold items and open-import drafts are excluded: the first's listing is
 history, and the second was written by this same prompt from these same

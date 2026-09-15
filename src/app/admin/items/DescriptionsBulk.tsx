@@ -119,7 +119,11 @@ function itemCount(n: number): string {
 function note(rewritable: number, aiOn: boolean): string {
   if (!aiOn) return 'שיפור תיאורים אוטומטי כבוי: לא הוגדר מפתח API.'
   if (rewritable === 0) {
-    return 'לכל הפריטים כבר יש תיאור שנכתב אוטומטית. פריטים שנמכרו, טיוטות מייבוא פתוח ופריטים בלי תמונות לא נכללים.'
+    // Deliberately "nothing waiting" and not "everything has one": an item the
+    // model failed to describe twice has also stopped being offered, and
+    // claiming it now has an automatic description would be a lie about the
+    // one item the seller might want to look at.
+    return 'אין פריטים שממתינים לשיפור תיאור. פריטים שנמכרו, טיוטות מייבוא פתוח ופריטים בלי תמונות לא נכללים.'
   }
 
   const now = Math.min(rewritable, BATCH_LIMIT)

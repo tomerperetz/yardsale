@@ -204,12 +204,84 @@ describe('rewriteDescriptions', () => {
     expect((await db.item.findUniqueOrThrow({ where: { id: item.id } })).descriptionWrittenAt).not.toBeNull()
   })
 
-  it('offers an item again when the call failed — nothing was written, nothing was stamped', async () => {
+  it('offers an item again after ONE failure — a network blip deserves a retry', async () => {
     await itemWithPhoto()
     captionItem.mockResolvedValue({ ok: false, reason: 'FAILED' })
     await rewriteDescriptions()
 
     expect(await rewriteCount()).toBe(1)
+  })
+
+  it('stops offering an item the model will never describe, instead of billing it forever', async () => {
+    // Selection is deterministic, so without a cap the one item that always
+    // fails is picked FIRST on every press, paid for every time, while the
+    // screen goes on saying "press again to continue" and `remaining` never
+    // reaches zero. The seller obeys. This is that loop, closed.
+    await itemWithPhoto()
+    captionItem.mockResolvedValue({ ok: false, reason: 'FAILED' })
+
+    await rewriteDescriptions()
+    await rewriteDescriptions()
+    captionItem.mockClear()
+
+    expect(await rewriteCount()).toBe(0)
+    expect(await rewriteDescriptions()).toMatchObject({ rewritten: 0, remaining: 0 })
+    expect(captionItem).not.toHaveBeenCalled()
+  })
+
+  it('counts an empty answer as a spent attempt — the call was paid for', async () => {
+    await itemWithPhoto()
+    captionItem.mockResolvedValue({
+      ok: true,
+      value: { headline: 'x', description: '   ', category: '', priceAgorot: 0 },
+    })
+
+    await rewriteDescriptions()
+    await rewriteDescriptions()
+
+    expect(await rewriteCount()).toBe(0)
+  })
+
+  it('retires an item whose photo files have gone, without ever calling the model', async () => {
+    // Free to discover, but it can never succeed, and leaving it in the queue
+    // is what keeps the screen asking for one more press.
+    const item = await makeItem()
+    await db.photo.create({ data: { itemId: item.id, width: 8, height: 6, lqip: 'x', position: 0 } })
+
+    await rewriteDescriptions()
+    await rewriteDescriptions()
+
+    expect(captionItem).not.toHaveBeenCalled()
+    expect(await rewriteCount()).toBe(0)
+  })
+
+  it('never burns an attempt on running out of credit — the model never saw the item', async () => {
+    // Otherwise topping up the account would find half the shop quietly
+    // retired by failures that said nothing about the items themselves.
+    await itemWithPhoto()
+    captionItem.mockResolvedValue({ ok: false, reason: 'OUT_OF_CREDIT' })
+
+    await rewriteDescriptions()
+    await rewriteDescriptions()
+    await rewriteDescriptions()
+
+    expect(await rewriteCount()).toBe(1)
+  })
+
+  it('clears the attempts once an item finally gets its description', async () => {
+    const item = await itemWithPhoto()
+    captionItem.mockResolvedValue({ ok: false, reason: 'FAILED' })
+    await rewriteDescriptions()
+
+    captionItem.mockResolvedValue({
+      ok: true,
+      value: { headline: 'x', description: 'תיאור חדש.', category: '', priceAgorot: 0 },
+    })
+    await rewriteDescriptions()
+
+    const saved = await db.item.findUniqueOrThrow({ where: { id: item.id } })
+    expect(saved.descriptionAttempts).toBe(0)
+    expect(saved.descriptionWrittenAt).not.toBeNull()
   })
 
   it('never touches a DRAFT — the import just wrote it, from the same prompt and the same photos', async () => {

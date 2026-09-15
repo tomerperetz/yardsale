@@ -65,11 +65,23 @@ let inFlight = false
  * resumable rather than repeatable: press it again and it continues through
  * the ones it has not reached, instead of buying the first twelve a second
  * time.
+ *
+ * Guard four is the attempt cap, and it closes the hole guard three opened. A
+ * failed call deliberately stamps nothing, so the item comes back around — the
+ * right behaviour for a network blip. But selection is deterministic, so an
+ * item the model will never describe is picked FIRST on every press, paid for
+ * every time, while `remaining` never reaches zero and the screen goes on
+ * saying "press again to continue". The seller obeys. Two attempts and an item
+ * stops being offered: a blip gets its retry, a hopeless photograph stops
+ * costing money.
  */
+const MAX_ATTEMPTS = 2
+
 const REWRITABLE: Prisma.ItemWhereInput = {
   status: { notIn: [ItemStatus.SOLD, ItemStatus.DRAFT] },
   photos: { some: {} },
   descriptionWrittenAt: null,
+  descriptionAttempts: { lt: MAX_ATTEMPTS },
 }
 
 /**
@@ -160,24 +172,52 @@ async function rewriteOne(itemId: string, photoIds: string[], categories: string
   const bytes = await readPhotoBytes(photoIds)
   const images = photoIds.map((id) => bytes.get(id)).filter((webp): webp is Buffer => webp !== undefined)
   // Every file gone from disk. Nothing to show the model, and calling it with
-  // no images would spend a request to be told so.
-  if (images.length === 0) return 'FAILED'
+  // no images would spend a request to be told so. Counted as an attempt all
+  // the same — it costs nothing, but an item in this state can never succeed,
+  // and leaving it in the queue is what keeps the screen asking for one more
+  // press that will never be the last.
+  if (images.length === 0) return await failed(itemId)
 
   const caption = await captionItem(images, categories).catch((err): AiResult<Caption> => {
     console.error('[rewrite] the caption call for item', itemId, 'threw:', err)
     return { ok: false, reason: 'FAILED' }
   })
-  if (!caption.ok) return caption.reason
+
+  if (!caption.ok) {
+    // Running out of credit is the one failure that says nothing about this
+    // item. The seller tops up and presses again; burning an attempt for it
+    // would quietly retire items the model never even saw.
+    if (caption.reason === 'OUT_OF_CREDIT') return 'OUT_OF_CREDIT'
+    return await failed(itemId)
+  }
 
   const description = caption.value.description.trim()
   // An empty answer is not an improvement. The item keeps the description it
-  // has rather than losing the one a buyer was reading — and keeps its null
-  // timestamp, so the next press tries it again.
-  if (description === '') return 'FAILED'
+  // has rather than losing the one a buyer was reading — but the call was
+  // paid for, so it counts.
+  if (description === '') return await failed(itemId)
 
   await db.item.update({
     where: { id: itemId },
-    data: { description, descriptionWrittenAt: new Date() },
+    data: { description, descriptionWrittenAt: new Date(), descriptionAttempts: 0 },
   })
   return null
+}
+
+/**
+ * Records one spent attempt and reports the failure.
+ *
+ * Its own function because the increment is the easy half to forget, and
+ * forgetting it on any one path puts that path back in the loop this cap
+ * exists to break.
+ */
+async function failed(itemId: string): Promise<AiFailure> {
+  await db.item
+    .update({ where: { id: itemId }, data: { descriptionAttempts: { increment: 1 } } })
+    .catch((err) => {
+      // The item was deleted from another tab mid-run. Nothing to record, and
+      // nothing that should take the rest of the batch down with it.
+      console.error('[rewrite] could not record a failed attempt for item', itemId, ':', err)
+    })
+  return 'FAILED'
 }

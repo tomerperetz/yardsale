@@ -25,6 +25,12 @@ model Item {
   // the shop-wide rewrite can tell what it has already paid for. Without it a
   // seller who presses the button twice buys the same descriptions twice.
   descriptionWrittenAt DateTime?
+  // How many times a model has been asked to describe this item and come back
+  // with nothing usable. The retry it buys is for a network blip; the CAP it
+  // buys is the point — without one, an item the model will never describe
+  // stays at the front of the queue, is paid for again on every press, and
+  // keeps the screen telling the seller to press again.
+  descriptionAttempts   Int      @default(0)
   photos        Photo[]
   orderItems    OrderItem[]
   createdAt     DateTime    @default(now())

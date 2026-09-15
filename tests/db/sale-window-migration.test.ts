@@ -17,8 +17,9 @@ import { makeItem, makeOrder, makeSettings } from '../helpers/factories'
  */
 const FIX = `
 UPDATE "Item" i
-SET "pickupFrom" = DATE '2026-09-15', "pickupTo" = DATE '2026-09-28'
-WHERE i."status" <> 'RESERVED'
+SET "pickupFrom" = GREATEST(CURRENT_DATE, DATE '2026-09-15'), "pickupTo" = DATE '2026-09-28'
+WHERE DATE '2026-09-28' >= CURRENT_DATE
+  AND i."status" <> 'RESERVED'
   AND NOT EXISTS (
     SELECT 1
     FROM "OrderItem" oi
@@ -27,7 +28,11 @@ WHERE i."status" <> 'RESERVED'
       AND o."status" IN ('PENDING_PAYMENT', 'CLAIMED_PAID', 'PAID')
   )`
 
-const SETTINGS_FIX = `UPDATE "Settings" SET "saleFrom" = DATE '2026-09-15', "saleTo" = DATE '2026-09-28' WHERE "id" = 1`
+const SETTINGS_FIX = `
+UPDATE "Settings"
+SET "saleFrom" = GREATEST(CURRENT_DATE, DATE '2026-09-15'), "saleTo" = DATE '2026-09-28'
+WHERE "id" = 1
+  AND DATE '2026-09-28' >= CURRENT_DATE`
 
 const windowOf = async (id: string) => {
   const item = await db.item.findUniqueOrThrow({ where: { id } })
@@ -115,6 +120,19 @@ describe('the 28 September data fix', () => {
     const settings = await db.settings.findUniqueOrThrow({ where: { id: 1 } })
     expect(settings.saleFrom).toEqual(FIXED.from)
     expect(settings.saleTo).toEqual(FIXED.to)
+  })
+
+  it('never writes a window that has already closed', async () => {
+    // The dates are hard-coded. A first deploy in October would otherwise put
+    // a passed week on every item in the shop — the exact bug this migration
+    // exists to fix, reintroduced by the fix for it. Both statements carry the
+    // guard; this proves the guard is the thing that stops them.
+    const past = FIX.replace(/DATE '2026-09-28'/g, "DATE '2020-01-01'").replace(/DATE '2026-09-15'/g, "DATE '2019-12-01'")
+    const item = await makeItem()
+    const before = await windowOf(item.id)
+
+    expect(await db.$executeRawUnsafe(past)).toBe(0)
+    expect(await windowOf(item.id)).toEqual(before)
   })
 
   it('does nothing on a database with no Settings row yet', async () => {
