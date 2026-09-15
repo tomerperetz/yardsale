@@ -289,9 +289,92 @@ async function captionOne(
       name: caption.value.headline,
       description: caption.value.description,
       ...(categoryId ? { categoryId } : {}),
+      // 0 means the model would not price it, and 0 is also what the draft
+      // already holds — so writing it either way changes nothing and needs no
+      // branch. A suggestion arrives on the seller's own ₪50 grid and still
+      // has to be confirmed: the review screen says the prices are suggested,
+      // and the seller edits the ones that are wrong before publishing.
+      priceAgorot: caption.value.priceAgorot,
     },
   })
   return null
+}
+
+/** What the seller sees filled in on a card the model just wrote. */
+export type Suggestion = {
+  name: string
+  description: string
+  /** Shekels as the price field holds them; '' when the model would not price it. */
+  price: string
+  categoryName: string
+}
+
+export type SuggestResult = { ok: true; suggestion: Suggestion } | { ok: false; reason: AiFailure }
+
+/**
+ * Writes the copy, category and suggested price for ONE item that already
+ * exists — the same pass `clusterBatch` runs over a whole batch, aimed at a
+ * single card.
+ *
+ * It exists for `movePhoto(photoId, 'new')`. A seller splitting a wrongly
+ * clustered group used to get a card named "פריט חדש" with nothing else on
+ * it, and had to type a name, a description, a category and a price by hand —
+ * for an item whose photograph the model was perfectly able to read. The
+ * whole point of the import is that it does not ask for that twice.
+ *
+ * Returns what was actually stored rather than what the model said, read back
+ * after the write, so the review screen can fill its fields in without a
+ * reload — a reload there would discard every unsaved edit on every other
+ * card.
+ *
+ * Never throws, like everything else on this path: a failure leaves the card
+ * for the seller to fill in and says which failure it was.
+ */
+export async function suggestForItem(itemId: string): Promise<SuggestResult> {
+  if (!aiEnabled()) return { ok: false, reason: 'NO_KEY' }
+
+  const item = await db.item.findUnique({
+    where: { id: itemId },
+    select: { id: true, photos: { orderBy: { position: 'asc' }, select: { id: true } } },
+  })
+  // No photographs is not a failure of the model — there was nothing to show
+  // it — but it reaches the seller as the same "fill this in yourself".
+  if (!item || item.photos.length === 0) return { ok: false, reason: 'FAILED' }
+
+  const photoIds = item.photos.map((photo) => photo.id)
+  const [bytes, categories] = await Promise.all([
+    readPhotoBytes(photoIds),
+    db.category.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+  ])
+
+  const failure = await captionOne(
+    { id: item.id, photoIds },
+    bytes,
+    categories.map((category) => category.name),
+    new Map(categories.map((category) => [category.name, category.id])),
+  ).catch((err) => {
+    console.error('[import] suggesting details for item', itemId, 'failed:', err)
+    return 'FAILED' as const
+  })
+  if (failure) return { ok: false, reason: failure }
+
+  const saved = await db.item.findUnique({
+    where: { id: itemId },
+    select: { name: true, description: true, priceAgorot: true, category: { select: { name: true } } },
+  })
+  if (!saved) return { ok: false, reason: 'FAILED' }
+
+  return {
+    ok: true,
+    suggestion: {
+      name: saved.name,
+      description: saved.description,
+      // '' and not '0': the price field is empty until someone means a number,
+      // and 0 is the value the publish guard refuses on.
+      price: saved.priceAgorot === 0 ? '' : String(saved.priceAgorot / 100),
+      categoryName: saved.category.name,
+    },
+  }
 }
 
 /**

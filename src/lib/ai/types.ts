@@ -29,4 +29,15 @@ export type Caption = {
   headline: string
   description: string
   category: string
+  /**
+   * A suggested asking price in agorot, already rounded to the nearest ₪50,
+   * or 0 for "the model would not price it".
+   *
+   * Zero is a real answer and not a missing one: the model is told to return
+   * it rather than guess at an object it cannot identify, and 0 is also what
+   * an unpriced draft already holds — so the import path writes it without a
+   * special case, and the review screen goes on showing an empty price field
+   * and refusing to publish until the seller fills it.
+   */
+  priceAgorot: number
 }

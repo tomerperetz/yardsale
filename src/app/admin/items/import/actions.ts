@@ -17,7 +17,13 @@ import {
   LIVE_ORDER_STATUSES,
   SOLD_THROUGH_SHOP,
 } from '@/lib/admin/items'
-import { carriedForward, clusterBatch, type ClusterBatchResult } from '@/lib/import/batch'
+import {
+  carriedForward,
+  clusterBatch,
+  suggestForItem,
+  type ClusterBatchResult,
+  type SuggestResult,
+} from '@/lib/import/batch'
 
 /**
  * The import flow's server actions. As with src/app/admin/items/actions.ts,
@@ -160,6 +166,24 @@ export async function movePhoto(photoId: string, toItemId: string | 'new'): Prom
 
   revalidatePath('/admin/items')
   return { ok: true, itemId }
+}
+
+/**
+ * Fills in one card the model has not seen yet — the item `movePhoto(…, 'new')`
+ * just minted around a single photograph.
+ *
+ * Its own action, and not part of `movePhoto`, because the two have different
+ * costs: moving a photo is a row update the seller watches happen, and asking
+ * a model to describe it takes seconds. Folding them together would freeze the
+ * review screen on every correction. This one is fired after the move lands,
+ * and the card says it is being written while it runs.
+ *
+ * No revalidatePath: the review screen holds the seller's unsaved edits in
+ * component state, and refreshing the route under them would throw those away
+ * to deliver one card's copy. The caller merges the returned values instead.
+ */
+export async function suggestItemAction(itemId: string): Promise<SuggestResult> {
+  return suggestForItem(itemId)
 }
 
 /**

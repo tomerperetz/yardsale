@@ -63,8 +63,13 @@ const CAPTION_TOOL: Anthropic.Tool = {
         type: 'string',
         description: 'One of the supplied category names, copied verbatim, or an empty string if none fits.',
       },
+      priceShekels: {
+        type: 'integer',
+        description:
+          'A fair second-hand asking price in whole shekels for this item in this condition, or 0 if the item cannot be identified well enough to price.',
+      },
     },
-    required: ['headline', 'description', 'category'],
+    required: ['headline', 'description', 'category', 'priceShekels'],
     additionalProperties: false,
   },
 }
@@ -213,9 +218,31 @@ export async function clusterPhotos(photos: ClusterPhoto[]): Promise<AiResult<st
   return { ok: true, value: groups }
 }
 
+/** The seller prices in steps of ₪50, so a suggestion arrives on the same grid. */
+const PRICE_STEP_AGOROT = 5_000
+
 /**
- * Writes the Hebrew headline and description for one item, and picks its
- * category from the seller's own list.
+ * The model's shekel estimate as agorot on the seller's ₪50 grid.
+ *
+ * Rounded here rather than asked for in the prompt, because a rule the model
+ * is merely told about is a rule that holds most of the time: this one has to
+ * hold every time, or the seller sees a ₪137 suggestion in a shop where every
+ * other price ends in 00 or 50.
+ *
+ * Nothing between ₪1 and ₪49 rounds down to nothing — an item the model
+ * thought was worth something must not arrive looking unpriced, which is the
+ * one meaning 0 already carries. Anything that is not a usable number at all
+ * (absent, negative, NaN, a string) becomes 0: no suggestion.
+ */
+export function suggestedPriceAgorot(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return 0
+  const agorot = Math.round(raw * 100)
+  return Math.max(PRICE_STEP_AGOROT, Math.round(agorot / PRICE_STEP_AGOROT) * PRICE_STEP_AGOROT)
+}
+
+/**
+ * Writes the Hebrew headline and description for one item, picks its
+ * category from the seller's own list, and suggests a price.
  *
  * `category` is one of `categories` verbatim, or a name the model proposed
  * because none of them fitted, or `''` when it could not tell (spec §3.5).
@@ -260,7 +287,10 @@ export async function captionItem(images: Buffer[], categories: string[]): Promi
     return { ok: false, reason: classify(err) }
   }
 
-  const listing = raw as { headline?: unknown; description?: unknown; category?: unknown } | null | undefined
+  const listing = raw as
+    | { headline?: unknown; description?: unknown; category?: unknown; priceShekels?: unknown }
+    | null
+    | undefined
   if (typeof listing?.headline !== 'string' || typeof listing.description !== 'string') {
     console.error('[ai] caption response rejected:', JSON.stringify(raw))
     return { ok: false, reason: 'FAILED' }
@@ -278,6 +308,7 @@ export async function captionItem(images: Buffer[], categories: string[]): Promi
       headline: listing.headline.trim(),
       description: listing.description.trim(),
       category: existing ?? proposed,
+      priceAgorot: suggestedPriceAgorot(listing.priceShekels),
     },
   }
 }

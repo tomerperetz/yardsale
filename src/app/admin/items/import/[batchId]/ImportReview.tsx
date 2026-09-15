@@ -16,6 +16,7 @@ import {
   movePhoto,
   publishItems,
   removePhoto,
+  suggestItemAction,
 } from '../actions'
 import styles from '../import.module.css'
 
@@ -91,6 +92,11 @@ export function ImportReview({
   const [viewing, setViewing] = useState<{ ids: string[]; index: number } | null>(null)
   const viewerOrigin = useRef<HTMLElement | null>(null)
 
+  // Cards the model is currently writing. Tracked per item rather than as the
+  // screen-wide `busy` flag, because asking for one card's copy takes seconds
+  // and must not lock the other nineteen while it runs.
+  const [suggesting, setSuggesting] = useState<Set<string>>(new Set())
+
   const openViewer = (ids: string[], index: number, origin: HTMLElement | null) => {
     viewerOrigin.current = origin
     setViewing({ ids, index })
@@ -161,9 +167,15 @@ export function ImportReview({
     [items, selected],
   )
 
-  function editItem(id: string, patch: Partial<ReviewItem>) {
+  /**
+   * One card's fields. Marks the card unsaved, because that is what a keystroke
+   * in it means — except for `{ dirty: false }`, which is how `suggest` writes
+   * back values the server has already stored: an "unsaved" dot on those would
+   * send the seller to press save for a write that has happened.
+   */
+  function editItem(id: string, patch: Partial<ReviewItem>, options: { dirty?: boolean } = {}) {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
-    setDirty((prev) => new Set(prev).add(id))
+    if (options.dirty !== false) setDirty((prev) => new Set(prev).add(id))
   }
 
   function clearDirty(ids: Iterable<string>) {
@@ -416,6 +428,9 @@ export function ImportReview({
    * server's carried-forward defaults have drifted from this prediction.
    */
   async function handleMove(photoId: string, fromItemId: string, toItemId: string) {
+    /** The card this move brought into being, if it brought one into being. */
+    let minted: string | null = null
+
     await run(async () => {
       const result = await movePhoto(photoId, toItemId === 'new' ? 'new' : toItemId)
       if (!result.ok) {
@@ -464,8 +479,45 @@ export function ImportReview({
       if (!items.some((item) => item.id === destination)) {
         setSelected((prev) => new Set(prev).add(destination))
         setDirty((prev) => new Set(prev).add(destination))
+        minted = destination
       }
     })
+
+    // Outside `run`, and only for a card that did not exist a moment ago: the
+    // move itself is a row update the seller watches happen, and asking the
+    // model to describe the photograph takes seconds. Inside `run` those
+    // seconds would be spent with every control on the screen disabled.
+    if (minted !== null) void suggest(minted)
+  }
+
+  /**
+   * Fills in a card the model has not seen — the one a photo was just moved
+   * into. Everything the seller would otherwise type for a photograph the
+   * model can read perfectly well: a name, a description, a category and a
+   * price.
+   *
+   * A failure is deliberately quiet. The card is already usable, the seller is
+   * mid-correction, and an error banner for a convenience that did not arrive
+   * would read as though the move itself had gone wrong.
+   */
+  async function suggest(itemId: string) {
+    setSuggesting((prev) => new Set(prev).add(itemId))
+    try {
+      const result = await suggestItemAction(itemId)
+      if (!result.ok) return
+      // Written straight over the placeholder, and NOT marked dirty: the
+      // server has already stored exactly these values, so a "save" here would
+      // write back what is already there and a "unsaved" dot would be a lie.
+      editItem(itemId, result.suggestion, { dirty: false })
+    } catch (err) {
+      console.error('[import] suggesting details for the new item failed:', err)
+    } finally {
+      setSuggesting((prev) => {
+        const next = new Set(prev)
+        next.delete(itemId)
+        return next
+      })
+    }
   }
 
   /**
@@ -509,6 +561,18 @@ export function ImportReview({
       {noticeLine && (
         <div className={notice === 'OUT_OF_CREDIT' ? `${styles.notice} ${styles.noticeWarn}` : styles.notice}>
           <p>{noticeLine}</p>
+        </div>
+      )}
+
+      {/* Said once, here, rather than under twenty price fields. It appears
+          exactly when there is something to warn about — a price the seller
+          did not type — and it matters because the prices arrive already
+          filled in: without this line, publishing the batch is the same click
+          whether they read the numbers or not, and the numbers are a guess a
+          model made from a photograph. */}
+      {items.some((item) => item.price !== '') && (
+        <div className={styles.notice}>
+          <p>המחירים הם הצעה אוטומטית לפי התמונות, מעוגלת ל־50 ₪. עברו עליהם לפני הפרסום.</p>
         </div>
       )}
 
@@ -584,6 +648,7 @@ export function ImportReview({
           const isSelected = selected.has(item.id)
           const from = utcDateOrNull(item.pickupFrom)
           const to = utcDateOrNull(item.pickupTo)
+          const writing = suggesting.has(item.id)
           return (
             <article key={item.id} className={isSelected ? `${styles.card} ${styles.cardOn}` : styles.card}>
               <div className={styles.cardHead}>
@@ -592,6 +657,14 @@ export function ImportReview({
                   <span>פריט {index + 1}</span>
                 </label>
                 <span className={styles.count}>{photosLabel(item.photos.length)}</span>
+                {/* A card the model is writing right now — the one a photo was
+                    just moved into. Said on the card rather than screen-wide,
+                    because every other card is still editable while it runs. */}
+                {writing && (
+                  <span className={styles.writing} role="status">
+                    כותב פרטים…
+                  </span>
+                )}
                 {from && to && (
                   <span className={styles.window}>
                     איסוף: <PickupWindow from={from} to={to} />
