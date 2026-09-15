@@ -4,12 +4,16 @@ import { db } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
 import { saleWindowEnded, saleWindowInputs } from '@/lib/sale-window'
 import { pickupWindowCounts } from '@/lib/admin/items'
+import { saleProgress } from '@/lib/admin/sale-progress'
+import { rewriteCounts } from '@/lib/import/rewrite'
 import { aiEnabled } from '@/lib/ai/client'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { photoUrl } from '@/lib/photo-url'
 import { BulkQueue } from '@/components/admin/BulkQueue'
 import { ImportDrop } from '@/app/admin/items/import/ImportDrop'
 import { PickupWindowBulk } from './PickupWindowBulk'
+import { DescriptionsBulk } from './DescriptionsBulk'
+import { SaleProgress } from '@/components/admin/SaleProgress'
 import { PickupWindow } from '@/components/PickupWindow'
 import { Price } from '@/components/Price'
 import { AdminNav } from '@/components/admin/AdminNav'
@@ -65,7 +69,8 @@ export const dynamic = 'force-dynamic'
 export default async function AdminItemsPage() {
   await releaseExpiredHolds()
 
-  const [items, categories, lastItem, settings, claimedCount, windowCounts] = await Promise.all([
+  const [items, categories, lastItem, settings, claimedCount, windowCounts, progress, describable] =
+    await Promise.all([
     db.item.findMany({
       orderBy: { createdAt: 'desc' },
       include: { category: true, photos: { orderBy: { position: 'asc' } } },
@@ -75,6 +80,8 @@ export default async function AdminItemsPage() {
     getSettings(),
     db.order.count({ where: { status: OrderStatus.CLAIMED_PAID } }),
     pickupWindowCounts(),
+    saleProgress(),
+    rewriteCounts(),
   ])
 
   const initialCategory = lastItem?.category.name ?? categories[0]?.name ?? ''
@@ -120,6 +127,11 @@ export default async function AdminItemsPage() {
           <AdminNav active="items" itemCount={items.length} ordersAlertCount={claimedCount} categoryCount={categories.length} />
 
           <main className={styles.shell}>
+            {/* First on the screen because it is the first thing worth
+                knowing on opening it: how much has gone, and how much of the
+                money has come in. */}
+            <SaleProgress progress={progress} />
+
             <section className={styles.panel}>
               <div className={styles.ptitle}>
                 <h2>הוספת פריטים</h2>
@@ -161,6 +173,7 @@ export default async function AdminItemsPage() {
                   window, applied across the shop. Hidden when there is nothing
                   to apply it to — on an empty shop the only thing worth saying
                   about the window is in Settings. */}
+              {items.length > 0 && <DescriptionsBulk rewritable={describable.rewritable} aiOn={aiImport} />}
               {items.length > 0 && (
                 <PickupWindowBulk
                   movable={windowCounts.movable}

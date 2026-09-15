@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { hebrewSlug, randomSuffix } from '@/lib/slug'
@@ -9,7 +7,7 @@ import { DRAFT_NAME } from '@/lib/admin/draft'
 import { saleWindow } from '@/lib/sale-window'
 import { getSettings } from '@/lib/settings'
 import { groupByCaptureTime, type PhotoStamp } from '@/lib/exif'
-import { photoDir, photoFilename } from '@/lib/images'
+import { readPhotoBytes } from './photo-bytes'
 
 /**
  * Turning an uploaded batch into draft items — spec §7.2.
@@ -28,9 +26,6 @@ export type ImportNotice = 'NONE' | 'NO_COPY' | 'OUT_OF_CREDIT'
 export type ClusterBatchResult =
   | { ok: true; itemIds: string[]; notice: ImportNotice }
   | { ok: false; error: string }
-
-/** The width both passes show the model — the smallest stored, and plenty to recognise an object by. */
-const MODEL_WIDTH = 400
 
 /**
  * The category a shop with no categories at all falls back to: an item needs
@@ -440,32 +435,3 @@ export async function carriedForward(): Promise<Defaults> {
   return { categoryId: created.id, pickupFrom, pickupTo, categories: [{ id: created.id, name: created.name }] }
 }
 
-/**
- * The bytes both passes show the model, by photo id. A photo whose file cannot
- * be read is simply absent: it is not shown to the model, and
- * `accountForEveryPhoto` still gives it an item, because a missing file is no
- * reason for a row to end up on nothing.
- */
-async function readPhotoBytes(ids: string[]): Promise<Map<string, Buffer>> {
-  const bytes = new Map<string, Buffer>()
-  const unreadable: string[] = []
-
-  await Promise.all(
-    ids.map(async (id) => {
-      try {
-        bytes.set(id, await readFile(path.join(photoDir(id), photoFilename(MODEL_WIDTH))))
-      } catch (err) {
-        unreadable.push(`${id} (${err instanceof Error ? err.message : String(err)})`)
-      }
-    }),
-  )
-
-  // One line for the batch rather than one per photo: a misconfigured
-  // UPLOAD_DIR makes every photo unreadable at once, and sixty stack traces
-  // would bury the rest of the import's logging.
-  if (unreadable.length > 0) {
-    console.error(`[import] no readable ${MODEL_WIDTH}px file for ${unreadable.length} photo(s):`, unreadable.join('; '))
-  }
-
-  return bytes
-}

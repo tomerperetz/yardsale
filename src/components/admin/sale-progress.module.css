@@ -1,0 +1,78 @@
+/* ── how far through the sale the seller is ──────────────────
+   Sits at the top of /admin/items, above the drop zone: it is the first thing
+   worth knowing on opening the screen, and it is read far more often than it
+   is interacted with. */
+.panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+  margin-block-end: 18px;
+}
+
+.panel h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.empty {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink-3);
+  line-height: 1.55;
+}
+
+/* Side by side where there is room, stacked on a phone. Two bars one under
+   the other on a wide screen would put a lot of air between the headline and
+   the number it describes. */
+.bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px 24px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.pct {
+  margin-inline-start: auto;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  /* A percentage is a left-to-right number even in a right-to-left sentence;
+     without this the sign lands on the wrong side of the digits. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.track {
+  margin-block-start: 7px;
+  height: 10px;
+  border-radius: 999px;
+  background: #EEE9E4;
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.detail {
+  margin: 7px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}

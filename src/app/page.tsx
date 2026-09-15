@@ -1,7 +1,9 @@
+import type { Metadata } from 'next'
 import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getPublicCategories } from '@/lib/items'
-import { NOT_PUBLIC_STATUSES } from '@/lib/visibility'
+import { NOT_PUBLIC_STATUSES, publicItemWhere } from '@/lib/visibility'
+import { shareCard } from '@/lib/share-card'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { itemsOrderBy, itemsWhere, parseGridParams } from '@/lib/grid'
@@ -22,6 +24,44 @@ import { ItemCard } from '@/components/ItemCard'
  * this export.
  */
 export const dynamic = 'force-dynamic'
+
+/**
+ * What the shop's own link looks like when the seller pastes it into a family
+ * or neighbourhood WhatsApp group — which is where nearly all of this shop's
+ * traffic comes from.
+ *
+ * The photograph is the newest available item's, not a fixed banner. It costs
+ * nothing to keep current, it shows a buyer something actually for sale right
+ * now, and re-sharing the same link after a week previews the week's new
+ * things rather than last week's.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const [settings, newest] = await Promise.all([
+    getSettings(),
+    db.item.findFirst({
+      where: publicItemWhere,
+      orderBy: { createdAt: 'desc' },
+      select: { photos: { orderBy: { position: 'asc' }, take: 1 } },
+    }),
+  ])
+
+  const cover = newest?.photos[0] ?? null
+  // Falls back to a description of the shop rather than to the seller's name:
+  // a first-run shop has neither filled in, and an empty og:title previews as
+  // the bare URL all over again.
+  const title = settings.shopName.trim() !== '' ? settings.shopName : 'מכירת חצר'
+  const tagline = settings.tagline.trim()
+
+  return shareCard({
+    title,
+    description:
+      tagline !== ''
+        ? tagline
+        : `רהיטים, מכשירים וספרים שכבר לא בשימוש${settings.city.trim() !== '' ? `, לאיסוף מ${settings.city.trim()}` : ''}.`,
+    photo: cover && { id: cover.id, width: cover.width, height: cover.height },
+    path: '/',
+  })
+}
 
 export default async function Home({
   searchParams,
