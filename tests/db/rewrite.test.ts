@@ -229,6 +229,53 @@ describe('rewriteDescriptions', () => {
     expect(captionItem).not.toHaveBeenCalled()
   })
 
+  it('reaches zero remaining even with a deterministically-failing item at the front of the queue', async () => {
+    // The reviewer's exact scenario. 13 items; the NEWEST is a photograph the
+    // model always answers about with an empty description, so `createdAt
+    // desc` picks it first on every press. Without a cap: every press bills it
+    // again, `remaining` sticks, and `doneMessage` goes on printing
+    // "נשארו פריט אחד — לחצו שוב להמשך" — the screen instructing the seller to
+    // repeat a call that cannot succeed.
+    const older = []
+    for (let i = 0; i < 12; i++) older.push(await itemWithPhoto())
+    const doomed = await itemWithPhoto() // newest, so selected first
+
+    // The stored file's bytes are the photo's own id (see `itemWithPhoto`),
+    // which is how this tells which item a given call is looking at.
+    const doomedPhotoId = (await db.photo.findFirstOrThrow({ where: { itemId: doomed.id } })).id
+    captionItem.mockImplementation(async (images) => {
+      const showsDoomed = images.some((image) => image.toString() === doomedPhotoId)
+      return showsDoomed
+        ? { ok: true, value: { headline: 'x', description: '', category: '', priceAgorot: 0 } }
+        : { ok: true, value: { headline: 'x', description: 'תיאור חדש.', category: '', priceAgorot: 0 } }
+    })
+
+    // Press until it says there is nothing left — and cap the loop, because
+    // "it never terminates" is the bug under test and a test that hangs is
+    // not a report.
+    let presses = 0
+    let remaining = Infinity
+    while (remaining !== 0 && presses < 10) {
+      const result = await rewriteDescriptions()
+      if (!result.ok) throw new Error(result.error)
+      remaining = result.remaining
+      presses++
+    }
+
+    expect(remaining).toBe(0)
+    expect(presses).toBeLessThanOrEqual(3)
+
+    // The twelve good ones got their copy; the doomed one kept what it had.
+    expect(await db.item.count({ where: { descriptionWrittenAt: { not: null } } })).toBe(12)
+    expect(await descriptionOf(doomed.id)).toBe('תיאור')
+
+    // And pressing once more spends nothing at all.
+    captionItem.mockClear()
+    expect(await rewriteDescriptions()).toMatchObject({ rewritten: 0, remaining: 0 })
+    expect(captionItem).not.toHaveBeenCalled()
+    expect(older).toHaveLength(12)
+  })
+
   it('counts an empty answer as a spent attempt — the call was paid for', async () => {
     await itemWithPhoto()
     captionItem.mockResolvedValue({
