@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getPublicCategories } from '@/lib/items'
-import { NOT_PUBLIC_STATUSES, publicItemWhere } from '@/lib/visibility'
+import { NOT_PUBLIC_STATUSES } from '@/lib/visibility'
 import { shareCard } from '@/lib/share-card'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
@@ -39,7 +39,11 @@ export async function generateMetadata(): Promise<Metadata> {
   const [settings, newest] = await Promise.all([
     getSettings(),
     db.item.findFirst({
-      where: publicItemWhere,
+      // Not `publicItemWhere`: that keeps SOLD items, because the grid shows
+      // them dimmed. A preview is an invitation, and the newest thing in the
+      // shop being the one that just went would advertise exactly what nobody
+      // can have. Same predicate as the hero's count below.
+      where: { status: { notIn: [...NOT_PUBLIC_STATUSES, ItemStatus.SOLD] } },
       orderBy: { createdAt: 'desc' },
       select: { photos: { orderBy: { position: 'asc' }, take: 1 } },
     }),
