@@ -392,9 +392,16 @@ describe('captionItem — the suggested price', () => {
     create.mockResolvedValue(listingCall({ headline: 'ס', description: 'ד', category: '', priceShekels: 100 }))
     return captionItem([Buffer.from('x')], []).then(() => {
       const tool = request().tools[0]
-      expect(tool.input_schema.properties.priceShekels.type).toBe('integer')
       expect(tool.input_schema.required).toContain('priceShekels')
       expect(request().tool_choice).toEqual({ type: 'tool', name: 'return_listing' })
+
+      // NOT 'integer'. With strict:true and an integer property, a live call
+      // came back with the model's own `</description><parameter …>` markup
+      // inside the description string and the raw text of the next parameter
+      // in `category` — on every item, invisibly to this file, which mocks
+      // the SDK. The rounding is ours (`suggestedPriceAgorot`); the schema
+      // must not also ask for it.
+      expect(tool.input_schema.properties.priceShekels.type).toBe('number')
     })
   })
 })

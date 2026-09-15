@@ -63,8 +63,20 @@ const CAPTION_TOOL: Anthropic.Tool = {
         type: 'string',
         description: 'One of the supplied category names, copied verbatim, or an empty string if none fits.',
       },
+      // `number`, and deliberately NOT `integer`, despite the prompt asking for
+      // a whole number and `suggestedPriceAgorot` rounding whatever arrives.
+      //
+      // This is not a style choice. With `strict: true` and an `integer`
+      // property, a live call against claude-sonnet-5 came back with the tool
+      // call half-parsed: the model's own `</description><parameter
+      // name="category">` markup landed INSIDE the description string, and
+      // `category` came back holding the raw text of the next parameter. The
+      // headline was fine, so nothing looked wrong until you read the item —
+      // and every item in every import would have carried it, invisibly to a
+      // test suite that mocks the SDK. Verified twice: `integer` reproduces
+      // it, `number` does not (.superpowers/price-probe.mts, 2026-09-15).
       priceShekels: {
-        type: 'integer',
+        type: 'number',
         description:
           'A fair second-hand asking price in whole shekels for this item in this condition, or 0 if the item cannot be identified well enough to price.',
       },

@@ -8,6 +8,12 @@
  * only together with that run — a prompt regression is invisible from the
  * test suite, which mocks the model entirely.
  *
+ * That rule has already earned itself once. The validation run for the
+ * 2026-09-15 rewrite (ad-style copy plus a suggested price) is what caught
+ * `priceShekels` being declared `integer` in a strict tool schema: the model's
+ * own markup came back inside the description of every item, and nothing in
+ * 556 passing tests could see it. See the comment on CAPTION_TOOL.
+ *
  * The user prompts carry `{n}`, `{n-1}` and `{categories}` placeholders. The
  * constants keep them, so the shipped text can be diffed against the draft;
  * the functions below fill them.
