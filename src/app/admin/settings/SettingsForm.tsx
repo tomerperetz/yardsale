@@ -8,9 +8,10 @@ import styles from './settings.module.css'
 
 /**
  * A form over the `Settings` singleton row — shop identity, the BIT
- * number, pickup address, the three slot hour labels, and the hold
- * length. Nothing here is pre-filled with a placeholder shop name/phone/
- * address: every field starts exactly at what `Settings` holds, empty or not.
+ * number, pickup address, the sale's collection window, the three slot hour
+ * labels, and the hold length. Nothing here is pre-filled with a placeholder
+ * shop name/phone/address — and the sale dates are no exception: every field
+ * starts exactly at what `Settings` holds, empty or not.
  */
 export function SettingsForm({ settings }: { settings: SettingsInput }) {
   const router = useRouter()
@@ -97,6 +98,45 @@ export function SettingsForm({ settings }: { settings: SettingsInput }) {
           </label>
           <input id="set-city" className="fld" value={values.city} onChange={(e) => set('city', e.target.value)} />
         </div>
+      </div>
+
+      {/*
+        The sale's collection window, directly above the hours of the day it
+        is collected in — one block answering "when can people come", days
+        then hours. Left empty it stays empty: the fallback lives in
+        `saleWindow()`, and pre-filling today's date here would look like a
+        window the seller had chosen.
+      */}
+      <div>
+        <div className={formStyles.two}>
+          <div>
+            <label className="lbl" htmlFor="set-saleFrom">
+              המכירה מתאריך <span className={formStyles.hint}>לא חובה</span>
+            </label>
+            <input
+              id="set-saleFrom"
+              className="fld"
+              type="date"
+              value={values.saleFrom}
+              onChange={(e) => set('saleFrom', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="lbl" htmlFor="set-saleTo">
+              עד תאריך
+            </label>
+            <input
+              id="set-saleTo"
+              className="fld"
+              type="date"
+              value={values.saleTo}
+              onChange={(e) => set('saleTo', e.target.value)}
+            />
+          </div>
+        </div>
+        <p className={styles.fieldNote}>
+          הימים שבהם אפשר לאסוף. כל פריט חדש ייפתח בתאריכים האלה. אם שני השדות ריקים, פריט חדש מקבל שבועיים מהיום.
+        </p>
       </div>
 
       <div className={styles.slotGrid}>

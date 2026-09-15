@@ -36,6 +36,16 @@
   margin: 0 0 20px;
 }
 
+/* The line under a field pair explaining what it does — same muted register
+   as .psub, tucked under the inputs rather than beside the label, because it
+   is a sentence and .hint is two words. */
+.fieldNote {
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
 .slotGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

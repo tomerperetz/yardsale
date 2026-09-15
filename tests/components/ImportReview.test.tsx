@@ -73,6 +73,7 @@ function renderReview(overrides: Partial<Parameters<typeof ImportReview>[0]> = {
       loosePhotos={[]}
       notice="NONE"
       defaults={DEFAULTS}
+      pricesSuggested={false}
       {...overrides}
     />,
   )
@@ -91,6 +92,31 @@ beforeEach(() => {
   removePhoto.mockResolvedValue({ ok: true })
   updateItemAction.mockResolvedValue({ ok: true, id: 'i2', slug: 'x' })
   publishItems.mockResolvedValue({ ok: true, published: 0, refused: [] })
+})
+
+describe('the price-suggestion banner', () => {
+  const BANNER = /המחירים הם הצעה אוטומטית/
+
+  it('appears when the model priced the batch', () => {
+    renderReview({ pricesSuggested: true })
+    expect(screen.getByText(BANNER)).toBeTruthy()
+  })
+
+  it('stays away when the model priced nothing', () => {
+    renderReview({ pricesSuggested: false })
+    expect(screen.queryByText(BANNER)).toBeNull()
+  })
+
+  it('does not appear because the SELLER typed a price', () => {
+    // The caption pass ran out of credit, so every price is empty and no model
+    // suggested anything. A seller filling one in by hand must not make the
+    // screen claim their own number came from a photograph and was rounded.
+    renderReview({ pricesSuggested: false, notice: 'OUT_OF_CREDIT' })
+
+    fireEvent.change(screen.getAllByLabelText('מחיר')[0], { target: { value: '100' } })
+
+    expect(screen.queryByText(BANNER)).toBeNull()
+  })
 })
 
 describe('the import review screen', () => {

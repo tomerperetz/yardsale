@@ -1,14 +1,13 @@
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { hebrewSlug, randomSuffix } from '@/lib/slug'
 import { aiEnabled, captionItem, clusterPhotos } from '@/lib/ai/client'
 import type { AiFailure, AiResult, Caption } from '@/lib/ai/types'
 import { DRAFT_NAME } from '@/lib/admin/draft'
-import { startOfUtcDay } from '@/lib/dates'
+import { saleWindow } from '@/lib/sale-window'
+import { getSettings } from '@/lib/settings'
 import { groupByCaptureTime, type PhotoStamp } from '@/lib/exif'
-import { photoDir, photoFilename } from '@/lib/images'
+import { readPhotoBytes } from './photo-bytes'
 
 /**
  * Turning an uploaded batch into draft items — spec §7.2.
@@ -27,13 +26,6 @@ export type ImportNotice = 'NONE' | 'NO_COPY' | 'OUT_OF_CREDIT'
 export type ClusterBatchResult =
   | { ok: true; itemIds: string[]; notice: ImportNotice }
   | { ok: false; error: string }
-
-/** The width both passes show the model — the smallest stored, and plenty to recognise an object by. */
-const MODEL_WIDTH = 400
-
-/** Matches the /admin/items default: today, through six days from today. */
-const DEFAULT_WINDOW_DAYS = 6
-const DAY_MS = 86_400_000
 
 /**
  * The category a shop with no categories at all falls back to: an item needs
@@ -70,7 +62,8 @@ export async function clusterBatch(batchId: string): Promise<ClusterBatchResult>
   const clustering = enabled ? await cluster(photos, bytes) : degraded(photos, 'NO_COPY')
 
   // The defaults are read before anything is created, so the items this call
-  // makes cannot become their own "most recent item".
+  // makes cannot become their own "most recent item" — the category still
+  // comes from that item, and the drafts below would otherwise be it.
   const defaults = await carriedForward()
 
   let created: NewItem[]
@@ -273,27 +266,159 @@ async function captionOne(
     // description. The placeholder is cleared deliberately — the model was
     // asked and had nothing, and an item cannot be published without a name,
     // so the seller is sent to the one field they must fill in themselves.
+    //
+    // This is right for the batch pass and wrong everywhere else: it is only
+    // safe because nobody has seen these rows yet. `suggestForItem` takes the
+    // other branch — see `applyCaption`, which it calls directly.
     await db.item.update({ where: { id: item.id }, data: { name: '', description: '' } })
     return caption.reason
   }
 
+  await applyCaption(item.id, caption.value, idByName)
+  return null
+}
+
+/**
+ * Writes one caption onto one item — the success half of `captionOne`, shared
+ * with `suggestForItem` so that a card the seller split mid-review is filled
+ * in by exactly the rule that filled in its neighbours.
+ *
+ * Only the success half. The failure half blanks the name and description,
+ * which is correct for a row nobody has seen and destructive for one the
+ * seller is looking at.
+ */
+async function applyCaption(itemId: string, caption: Caption, idByName: Map<string, string>): Promise<void> {
   // One of the seller's own names, a new one the model proposed, or '' when it
   // could not tell (spec §3.5). An empty one leaves the carried-forward
   // default in place; a proposal is created now so the item has a real
   // category, and the review screen flags it as new before the seller accepts.
-  const categoryId = caption.value.category === ''
+  const categoryId = caption.category === ''
     ? undefined
-    : (idByName.get(caption.value.category) ?? (await createProposedCategory(caption.value.category)))
+    : (idByName.get(caption.category) ?? (await createProposedCategory(caption.category)))
 
   await db.item.update({
-    where: { id: item.id },
+    where: { id: itemId },
     data: {
-      name: caption.value.headline,
-      description: caption.value.description,
+      name: caption.headline,
+      description: caption.description,
       ...(categoryId ? { categoryId } : {}),
+      // 0 means the model would not price it, and 0 is also what the draft
+      // already holds — so writing it either way changes nothing and needs no
+      // branch. A suggestion arrives on the seller's own ₪50 grid and still
+      // has to be confirmed: the review screen says the prices are suggested,
+      // and the seller edits the ones that are wrong before publishing.
+      priceAgorot: caption.priceAgorot,
+      // Stamped so the shop-wide rewrite (src/lib/import/rewrite.ts) knows a
+      // model has already written this one. Without it, an item imported this
+      // morning is offered up to be described again this afternoon, from the
+      // same photographs and the same prompt, for the same money.
+      descriptionWrittenAt: new Date(),
     },
   })
-  return null
+}
+
+/** What the seller sees filled in on a card the model just wrote. */
+export type Suggestion = {
+  name: string
+  description: string
+  /** Shekels as the price field holds them; '' when the model would not price it. */
+  price: string
+  categoryName: string
+}
+
+export type SuggestResult = { ok: true; suggestion: Suggestion } | { ok: false; reason: AiFailure }
+
+/**
+ * Writes the copy, category and suggested price for ONE item that already
+ * exists — the same pass `clusterBatch` runs over a whole batch, aimed at a
+ * single card.
+ *
+ * It exists for `movePhoto(photoId, 'new')`. A seller splitting a wrongly
+ * clustered group used to get a card named "פריט חדש" with nothing else on
+ * it, and had to type a name, a description, a category and a price by hand —
+ * for an item whose photograph the model was perfectly able to read. The
+ * whole point of the import is that it does not ask for that twice.
+ *
+ * Returns what was actually stored rather than what the model said, read back
+ * after the write, so the review screen can fill its fields in without a
+ * reload — a reload there would discard every unsaved edit on every other
+ * card.
+ *
+ * Never throws, like everything else on this path: a failure leaves the card
+ * exactly as it was — name, description and all — and says which failure it
+ * was. That is the one place this differs from the batch pass, which blanks
+ * both fields on failure; see the comment in `captionOne`.
+ */
+export async function suggestForItem(itemId: string): Promise<SuggestResult> {
+  if (!aiEnabled()) return { ok: false, reason: 'NO_KEY' }
+
+  const item = await db.item.findUnique({
+    where: { id: itemId },
+    select: { id: true, status: true, photos: { orderBy: { position: 'asc' }, select: { id: true } } },
+  })
+  if (!item) return { ok: false, reason: 'FAILED' }
+
+  // A DRAFT and nothing else. This is called with an id the review screen just
+  // minted, so the guard never fires in normal use — which is the point: it is
+  // what keeps a server action that overwrites an item's name, category and
+  // price from being pointable at a listing a buyer is reading, or at one an
+  // order is holding, by anything that can reach /admin.
+  if (item.status !== ItemStatus.DRAFT) {
+    console.error('[import] refusing to suggest details for', itemId, '— it is', item.status, 'not a draft')
+    return { ok: false, reason: 'FAILED' }
+  }
+
+  // No photographs is not a failure of the model — there was nothing to show
+  // it — but it reaches the seller as the same "fill this in yourself".
+  if (item.photos.length === 0) return { ok: false, reason: 'FAILED' }
+
+  const photoIds = item.photos.map((photo) => photo.id)
+  const [bytes, categories] = await Promise.all([
+    readPhotoBytes(photoIds),
+    db.category.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+  ])
+  const images = photoIds.map((id) => bytes.get(id)).filter((webp): webp is Buffer => webp !== undefined)
+  if (images.length === 0) return { ok: false, reason: 'FAILED' }
+
+  const caption = await captionItem(
+    images,
+    categories.map((category) => category.name),
+  ).catch((err): AiResult<Caption> => {
+    console.error('[import] the caption call for item', itemId, 'threw:', err)
+    return { ok: false, reason: 'FAILED' }
+  })
+
+  // The row is left exactly as it was. `captionOne` blanks the name and
+  // description here instead, which is right for a batch nobody has looked at
+  // and wrong for this: the seller is watching this card, and a failed
+  // suggestion that silently emptied it would leave them a nameless row with
+  // no explanation for it.
+  if (!caption.ok) return { ok: false, reason: caption.reason }
+
+  try {
+    await applyCaption(item.id, caption.value, new Map(categories.map((c) => [c.name, c.id])))
+  } catch (err) {
+    console.error('[import] storing the suggestion for item', itemId, 'failed:', err)
+    return { ok: false, reason: 'FAILED' }
+  }
+
+  const saved = await db.item.findUnique({
+    where: { id: itemId },
+    select: { name: true, description: true, priceAgorot: true, category: { select: { name: true } } },
+  })
+  if (!saved) return { ok: false, reason: 'FAILED' }
+
+  return {
+    ok: true,
+    suggestion: {
+      name: saved.name,
+      description: saved.description,
+      // '' and not '0': the price field is empty until someone means a number,
+      // and 0 is the value the publish guard refuses on.
+      price: saved.priceAgorot === 0 ? '' : String(saved.priceAgorot / 100),
+      categoryName: saved.category.name,
+    },
+  }
 }
 
 /**
@@ -322,25 +447,33 @@ async function createProposedCategory(name: string): Promise<string | undefined>
 /**
  * The defaults an imported item opens with — the same ones /admin/items
  * computes for the entry form, so a seller who imports gets what a seller who
- * types would have got: the category and pickup window of their most recent
- * item.
+ * types would have got: their most recent item's category, and the sale's
+ * collection window from Settings.
+ *
+ * The window used to carry forward from that same last item, and that is
+ * exactly how one stale week propagated across every later import until
+ * nineteen of twenty live items pointed at days that had already passed.
+ * Nothing in that chain ever re-asked the seller. `saleWindow()` does ask —
+ * of Settings, which the seller can fix in one place — and falls back to
+ * today → today+14 when they have not set one, so a new item can never open
+ * in the past.
+ *
+ * The category still carries forward: a seller photographing one room drops
+ * one kind of thing, and a wrong guess there costs a click on the review
+ * screen rather than a lie to a buyer.
  *
  * Exported for `movePhoto(photoId, 'new')` on the review screen, which mints a
  * draft mid-review and must open it with the same defaults the batch's other
  * items opened with rather than a second, drifting copy of this rule.
  */
 export async function carriedForward(): Promise<Defaults> {
-  const [last, categories] = await Promise.all([
-    db.item.findFirst({
-      orderBy: { createdAt: 'desc' },
-      select: { categoryId: true, pickupFrom: true, pickupTo: true },
-    }),
+  const [last, categories, settings] = await Promise.all([
+    db.item.findFirst({ orderBy: { createdAt: 'desc' }, select: { categoryId: true } }),
     db.category.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    getSettings(),
   ])
 
-  const today = startOfUtcDay(new Date())
-  const pickupFrom = last?.pickupFrom ?? today
-  const pickupTo = last?.pickupTo ?? new Date(today.getTime() + DEFAULT_WINDOW_DAYS * DAY_MS)
+  const { from: pickupFrom, to: pickupTo } = saleWindow(settings)
 
   if (last) return { categoryId: last.categoryId, pickupFrom, pickupTo, categories }
   if (categories.length > 0) return { categoryId: categories[0].id, pickupFrom, pickupTo, categories }
@@ -351,32 +484,3 @@ export async function carriedForward(): Promise<Defaults> {
   return { categoryId: created.id, pickupFrom, pickupTo, categories: [{ id: created.id, name: created.name }] }
 }
 
-/**
- * The bytes both passes show the model, by photo id. A photo whose file cannot
- * be read is simply absent: it is not shown to the model, and
- * `accountForEveryPhoto` still gives it an item, because a missing file is no
- * reason for a row to end up on nothing.
- */
-async function readPhotoBytes(ids: string[]): Promise<Map<string, Buffer>> {
-  const bytes = new Map<string, Buffer>()
-  const unreadable: string[] = []
-
-  await Promise.all(
-    ids.map(async (id) => {
-      try {
-        bytes.set(id, await readFile(path.join(photoDir(id), photoFilename(MODEL_WIDTH))))
-      } catch (err) {
-        unreadable.push(`${id} (${err instanceof Error ? err.message : String(err)})`)
-      }
-    }),
-  )
-
-  // One line for the batch rather than one per photo: a misconfigured
-  // UPLOAD_DIR makes every photo unreadable at once, and sixty stack traces
-  // would bury the rest of the import's logging.
-  if (unreadable.length > 0) {
-    console.error(`[import] no readable ${MODEL_WIDTH}px file for ${unreadable.length} photo(s):`, unreadable.join('; '))
-  }
-
-  return bytes
-}

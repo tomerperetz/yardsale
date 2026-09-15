@@ -122,13 +122,16 @@ generated, and see "First run" below for what to do next.
 
 The seed deliberately leaves every shop detail blank — no name, tagline, BIT
 number, address, city or pickup hours exist anywhere until the seller enters
-them. The very first session after a fresh deploy (or a fresh local database)
-looks like this:
+them. (It does create five categories — ריהוט, אלקטרוניקה, ילדים, הריון
+ולידה, ציוד ספורט — because the import asks the model to pick "from the
+seller's own list", and against an empty list it proposes one per item until
+the shop has drifted into a set nobody chose.) The very first session after a
+fresh deploy (or a fresh local database) looks like this:
 
 1. Open `/admin` and log in with the password behind `ADMIN_PASSWORD_HASH`.
 2. Go to Settings and fill in the shop name, tagline, BIT phone number,
-   address, city, and the three pickup slot hour ranges (morning, afternoon,
-   evening).
+   address, city, the sale's collection window, and the three pickup slot hour
+   ranges (morning, afternoon, evening).
 3. Upload items — drop the photos on `/admin/items`, which is built for
    uploading straight from a phone's photo gallery. There is one screen for
    this and no mode to pick: dropping a single photo is how you add a single
@@ -142,6 +145,41 @@ set.** This isn't a UI nicety that a determined buyer could work around —
 `bitPhone` is empty, and the cart page surfaces that as a plain message. If
 you deploy and immediately try to check out as a test buyer before touching
 Settings, seeing the shop refuse the order is expected behaviour, not a bug.
+
+### The sale's collection window
+
+Settings carries the days the seller is home to hand things over, and **every
+new item opens with them**. Left empty, a new item gets today through a
+fortnight from today.
+
+It lives there, and nowhere else, because of what happened when it did not.
+The window used to carry forward from the seller's most recent item, so each
+import inherited the one before it and nothing ever re-asked. One stale week
+walked forward through every later import until nineteen of twenty live
+listings were telling buyers to collect during a week that had already passed.
+
+The shop that was already in that state was repaired by a one-off data
+migration (`20260915100000_sale_window_to_28_sep`), which set the window to
+15–28 September on the deploy that carried it and will never run again. For
+any later drift, `/admin/items` carries a bar that applies one window across
+every item at once. It refuses to move an item a live order
+is holding — that order recorded a pickup date inside the window its buyer was
+shown, and on a confirmed order that buyer has already sent money — and it
+says how many items it will change before it changes them.
+
+### Sharing the link
+
+Every page carries Open Graph tags, so pasting the shop's link into WhatsApp
+produces a card rather than a bare URL: the shop's name, its tagline, and a
+photograph of the newest thing for sale. An item's own link previews with its
+name, its price and its own photograph. A sold or hidden item previews as a
+plain link, the same way its page 404s.
+
+Previews need an absolute origin, which comes from `RAILWAY_PUBLIC_DOMAIN`
+(set by Railway on every deploy — nothing to configure) or from `SITE_URL`
+once the shop has a domain of its own. In development neither is set and the
+tags are relative, which is the honest answer: there is nothing out there to
+preview from.
 
 ## The five states an item can be in
 
@@ -205,7 +243,8 @@ purpose.
 With `ANTHROPIC_API_KEY` set, `/admin/items` becomes an import screen: the
 seller drops up to 60 photos at once, Claude groups them by
 what is in them — twelve shots of one sofa are one item, not twelve — and
-writes a Hebrew headline and description for each group. That lands the
+writes a Hebrew headline and description for each group, picks a category
+from the seller's own list, and suggests a price. That lands the
 seller on a review screen at `/admin/items/import/<batch>`, which is where
 the real work happens:
 
@@ -216,6 +255,66 @@ the real work happens:
   **pickup window** across all of them in one action, then publishes them;
 - **discard the whole import**, which is the only control that also reaches
   photos that never made it onto an item.
+
+Moving a photo to **פריט חדש** fills that card in too: the model is shown the
+photograph and writes its name, description, category and price, the same way
+it would have on the way in. The call runs after the move rather than inside
+it — the move is a row update the seller watches happen, the writing takes
+seconds — and only that card says "כותב פרטים…" while it runs.
+
+The prices arrive **rounded to the nearest ₪50** and the review screen says
+once, at the top, that they are suggestions. Rounding happens in code and not
+in the prompt: a rule the model is merely told about holds most of the time,
+and this one has to hold every time. A model that cannot identify an object
+returns 0, which is the value an unpriced draft already carries and the one
+the publish guard refuses on — so it leaves the gate shut rather than guessing
+the price a stranger pays.
+
+The descriptions read like an advertisement rather than an inventory line, and
+they still name every visible flaw. That is not a compromise between the two:
+the scratch you name is what makes the rest of the listing believable, and a
+buyer who drives across town and finds an unmentioned one does not come back.
+
+### Rewriting the descriptions of items already listed
+
+The copy pass only ever runs on the way in, so anything listed before the
+import existed keeps whatever was typed at the time. `/admin/items` carries a
+**שיפור התיאורים** button that rewrites them all from their own photographs.
+
+**Descriptions only.** Not the name, not the category, not the price — the
+seller chose those, buyers have seen them, and orders have been placed against
+them.
+
+It is the only control in the app that spends money per row, which is why it
+has three guards rather than a confirmation dialogue:
+
+- **Twelve per press.** A caption call is ten to fifteen seconds; sixty items
+  in one request is minutes, which proxies cut — and the seller then sees "try
+  again" for a call that is still running and still billing. It says how many
+  are left, and pressing again continues rather than repeating.
+- **One at a time.** A second press while the first is still running is
+  refused server-side. The button's own disabled state is client state, and a
+  cut connection clears it while the server is still working.
+- **Never the same item twice, and never endlessly.** Every description a
+  model writes — here or on the way in — is stamped, and only unstamped items
+  are offered. A failed call stamps nothing, so it comes back around: a
+  network blip deserves a retry. But selection is deterministic, so an item
+  the model will never describe would be picked first on every press, paid for
+  every time, while the screen went on saying "press again". Two failed
+  attempts and an item stops being offered.
+
+  Only failures **about the item** count towards those two — the model
+  answered and the answer was unusable, or there are no photo files left to
+  show it. A call that never reached the model does not: no credit, no key, a
+  500, a 529 overloaded, a dropped connection. That distinction is the
+  difference between a cap and a trap. Nothing in the app resets the counter
+  and only a success clears it, so counting an outage would let twenty minutes
+  of upstream trouble permanently retire every item in the shop from the one
+  feature that exists for them.
+
+Sold items and open-import drafts are excluded: the first's listing is
+history, and the second was written by this same prompt from these same
+photographs minutes ago.
 
 Nothing is published until the seller says so. Every proposed item is a
 `DRAFT`, and closing the tab loses nothing — the drafts are in

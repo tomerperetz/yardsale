@@ -16,7 +16,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }))
 
-import { aiEnabled, captionItem, clusterPhotos } from '@/lib/ai/client'
+import { aiEnabled, captionItem, clusterPhotos, suggestedPriceAgorot } from '@/lib/ai/client'
 import { CAPTION_SYSTEM, CLUSTER_SYSTEM } from '@/lib/ai/prompts'
 
 const photo = (id: string, bytes: string) => ({ id, webp: Buffer.from(bytes) })
@@ -169,19 +169,37 @@ describe('clusterPhotos', () => {
     expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'OUT_OF_CREDIT' })
   })
 
-  it('reports FAILED for anything else', async () => {
+  // UNAVAILABLE and not FAILED, on all three. The split is not cosmetic: a
+  // caller that counts an item's failures and retires it after two — which
+  // `rewriteDescriptions` does — must never count a call that never reached
+  // the model, or twenty minutes of 529s retires the whole shop.
+  it('reports UNAVAILABLE for a server error', async () => {
     create.mockRejectedValue(apiError(500, 'boom'))
-    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'FAILED' })
+    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'UNAVAILABLE' })
   })
 
-  it('reports FAILED for a 400 that is not about money', async () => {
+  it('reports UNAVAILABLE for an overloaded service', async () => {
+    create.mockRejectedValue(apiError(529, 'overloaded_error'))
+    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'UNAVAILABLE' })
+  })
+
+  it('reports UNAVAILABLE for a 400 that is not about money', async () => {
     create.mockRejectedValue(apiError(400, 'messages.0.content.0.image: image does not match media_type'))
-    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'FAILED' })
+    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'UNAVAILABLE' })
   })
 
-  it('reports FAILED for a connection error, which carries no status', async () => {
+  it('reports UNAVAILABLE for a connection error, which carries no status', async () => {
     create.mockRejectedValue(apiError(undefined, 'Connection error.'))
-    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'FAILED' })
+    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'UNAVAILABLE' })
+  })
+
+  it('still reports FAILED when the model ANSWERED and the answer was unusable', () => {
+    // The other side of the split, and the one that is genuinely about this
+    // request: the call completed, and what came back did not account for the
+    // photographs.
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    create.mockResolvedValue(groupsCall('not an array'))
+    return expect(clusterPhotos([photo('a', 'x')])).resolves.toEqual({ ok: false, reason: 'FAILED' })
   })
 
   it('groups an empty batch without a call — no photos is a grouping, not a failure', async () => {
@@ -221,11 +239,11 @@ describe('captionItem', () => {
   // they see it before it exists. The old assertion is kept as the new one it
   // became rather than deleted, so the change is visible in the history.
   it('proposes a name the seller does not have, and marks it new', async () => {
-    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'לא קיים' }))
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'לא קיים' , priceAgorot: 0 }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'לא קיים' },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'לא קיים' , priceAgorot: 0 },
     })
   })
 
@@ -233,53 +251,53 @@ describe('captionItem', () => {
     // "הריהוט" is "ריהוט". Creating it would put two chips in the buyer's
     // filter bar that each hide the other's items — and the seller would have
     // approved it, because it looked like a considered suggestion.
-    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'הריהוט' }))
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'הריהוט' , priceAgorot: 0 }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' , priceAgorot: 0 },
     })
   })
 
   it('does not call a name new when it differs only by whitespace', async () => {
-    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: '  ריהוט   לבית ' }))
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: '  ריהוט   לבית ' , priceAgorot: 0 }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט לבית'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט לבית' },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט לבית' , priceAgorot: 0 },
     })
   })
 
   it('returns the seller\'s spelling, not the model\'s, when they match loosely', async () => {
-    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'הריהוט' }))
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'הריהוט' , priceAgorot: 0 }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
     expect(result.ok && result.value.category).toBe('ריהוט')
   })
 
   it('leaves the category empty, and not new, when the model cannot tell', async () => {
-    create.mockResolvedValue(listingCall({ headline: 'פריט', description: 'לא ברור.', category: '' }))
+    create.mockResolvedValue(listingCall({ headline: 'פריט', description: 'לא ברור.', category: '' , priceAgorot: 0 }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'פריט', description: 'לא ברור.', category: '' },
+      value: { headline: 'פריט', description: 'לא ברור.', category: '' , priceAgorot: 0 },
     })
   })
 
   it('proposes into an empty shop, which is the case the feature exists for', async () => {
-    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' }))
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' , priceAgorot: 0 }))
     const result = await captionItem([Buffer.from('x')], [])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' , priceAgorot: 0 },
     })
   })
 
   it('keeps a category the seller actually has, verbatim', async () => {
-    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' }))
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' , priceAgorot: 0 }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט', 'מטבח'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' , priceAgorot: 0 },
     })
   })
 
@@ -288,28 +306,28 @@ describe('captionItem', () => {
     create.mockImplementation(async () => {
       await Promise.resolve()
       categories[0] = 'מטבח'
-      return listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' })
+      return listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' , priceAgorot: 0 })
     })
 
     const result = await captionItem([Buffer.from('x')], categories)
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' , priceAgorot: 0 },
     })
   })
 
   it('trims the copy, so stray whitespace never reaches the item name', async () => {
-    create.mockResolvedValue(listingCall({ headline: '  ספה  ', description: '\nבד אפור.\n', category: ' ריהוט ' }))
+    create.mockResolvedValue(listingCall({ headline: '  ספה  ', description: '\nבד אפור.\n', category: ' ריהוט ' , priceAgorot: 0 }))
     const result = await captionItem([Buffer.from('x')], ['ריהוט'])
     expect(result).toEqual({
       ok: true,
-      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' },
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט' , priceAgorot: 0 },
     })
   })
 
   it('reports FAILED when the response is not a listing', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    create.mockResolvedValue(listingCall({ headline: 42, description: 'בד אפור.', category: '' }))
+    create.mockResolvedValue(listingCall({ headline: 42, description: 'בד אפור.', category: '' , priceAgorot: 0 }))
     expect(await captionItem([Buffer.from('x')], ['ריהוט'])).toEqual({ ok: false, reason: 'FAILED' })
   })
 
@@ -319,7 +337,7 @@ describe('captionItem', () => {
   })
 
   it('shows the model every photo of the item and names the seller categories', async () => {
-    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: '' }))
+    create.mockResolvedValue(listingCall({ headline: 'ספה', description: 'בד אפור.', category: '' , priceAgorot: 0 }))
     await captionItem([Buffer.from('one'), Buffer.from('two')], ['ריהוט', 'מטבח'])
 
     const sent = request()
@@ -334,5 +352,74 @@ describe('captionItem', () => {
   it('reports OUT_OF_CREDIT for a 429, the same as clustering', async () => {
     create.mockRejectedValue(apiError(429, 'rate limit'))
     expect(await captionItem([Buffer.from('x')], ['ריהוט'])).toEqual({ ok: false, reason: 'OUT_OF_CREDIT' })
+  })
+})
+
+describe('suggestedPriceAgorot', () => {
+  it('puts the model\'s shekels on the seller\'s ₪50 grid', () => {
+    // Rounded here and not merely asked for in the prompt: an instruction the
+    // model follows most of the time would put a ₪137 suggestion in a shop
+    // where every other price ends in 00 or 50.
+    expect(suggestedPriceAgorot(137)).toBe(15_000)
+    expect(suggestedPriceAgorot(125)).toBe(15_000)
+    expect(suggestedPriceAgorot(124)).toBe(10_000)
+    expect(suggestedPriceAgorot(900)).toBe(90_000)
+  })
+
+  it('never rounds a priced item down to looking unpriced', () => {
+    // 0 already means "not priced yet" everywhere else in the import, and the
+    // publish guard refuses on it. An item the model thought was worth ₪20
+    // must not arrive wearing that meaning.
+    expect(suggestedPriceAgorot(1)).toBe(5_000)
+    expect(suggestedPriceAgorot(20)).toBe(5_000)
+    expect(suggestedPriceAgorot(24)).toBe(5_000)
+  })
+
+  it('passes 0 through — the model declining to price is an answer', () => {
+    expect(suggestedPriceAgorot(0)).toBe(0)
+  })
+
+  it('treats anything that is not a usable number as no suggestion', () => {
+    for (const raw of [undefined, null, -50, NaN, Infinity, '200', {}]) {
+      expect(suggestedPriceAgorot(raw)).toBe(0)
+    }
+  })
+})
+
+describe('captionItem — the suggested price', () => {
+  it('rounds a live response and hands back agorot', async () => {
+    create.mockResolvedValue(
+      listingCall({ headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', priceShekels: 470 }),
+    )
+    const result = await captionItem([Buffer.from('x')], ['ריהוט'])
+    expect(result).toEqual({
+      ok: true,
+      value: { headline: 'ספה', description: 'בד אפור.', category: 'ריהוט', priceAgorot: 45_000 },
+    })
+  })
+
+  it('leaves the item unpriced when the model declines to price it', async () => {
+    create.mockResolvedValue(
+      listingCall({ headline: 'חפץ', description: 'לא ברור מהתמונה.', category: '', priceShekels: 0 }),
+    )
+    const result = await captionItem([Buffer.from('x')], ['ריהוט'])
+    expect(result.ok && result.value.priceAgorot).toBe(0)
+  })
+
+  it('asks for a price in the tool it forces, so a listing cannot come back without one', () => {
+    create.mockResolvedValue(listingCall({ headline: 'ס', description: 'ד', category: '', priceShekels: 100 }))
+    return captionItem([Buffer.from('x')], []).then(() => {
+      const tool = request().tools[0]
+      expect(tool.input_schema.required).toContain('priceShekels')
+      expect(request().tool_choice).toEqual({ type: 'tool', name: 'return_listing' })
+
+      // NOT 'integer'. With strict:true and an integer property, a live call
+      // came back with the model's own `</description><parameter …>` markup
+      // inside the description string and the raw text of the next parameter
+      // in `category` — on every item, invisibly to this file, which mocks
+      // the SDK. The rounding is ours (`suggestedPriceAgorot`); the schema
+      // must not also ask for it.
+      expect(tool.input_schema.properties.priceShekels.type).toBe('number')
+    })
   })
 })

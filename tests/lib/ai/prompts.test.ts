@@ -52,3 +52,34 @@ describe('the prompt constants', () => {
     expect(CAPTION_USER).toContain('{categories}')
   })
 })
+
+/**
+ * Not a test of whether the model writes good Hebrew — only a real run can
+ * say that (spec §10). These pin the instructions that other code depends on
+ * being in the prompt at all: a price to round, and a flaw to disclose.
+ */
+describe('CAPTION_SYSTEM', () => {
+  it('asks for a price, which is what `suggestedPriceAgorot` rounds', () => {
+    expect(CAPTION_SYSTEM).toContain('shekels')
+    // 0 is load-bearing: the import writes it straight onto the draft, where
+    // it means "unpriced" and the publish guard refuses on it.
+    expect(CAPTION_SYSTEM).toContain('return 0')
+  })
+
+  it('still requires a visible flaw to be named, now that the copy is selling', () => {
+    // The register changed on 2026-09-15 from a cold description to an ad.
+    // The disclosure did not: a buyer who drives across town and finds an
+    // unmentioned stain is the one thing this shop cannot afford.
+    expect(CAPTION_SYSTEM).toMatch(/scratch, stain, wear or missing part/)
+  })
+
+  it('names the sales-pitch words it will not accept', () => {
+    expect(CAPTION_SYSTEM).toContain('מדהים')
+    expect(CAPTION_SYSTEM).toContain('מציאה')
+    expect(CAPTION_SYSTEM).toContain('No exclamation marks')
+  })
+
+  it('forbids inventing a history the photographs cannot show', () => {
+    expect(CAPTION_SYSTEM).toContain('Do not invent a history')
+  })
+})

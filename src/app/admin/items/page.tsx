@@ -2,11 +2,18 @@ import Link from 'next/link'
 import { OrderStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
+import { saleWindowEnded, saleWindowInputs } from '@/lib/sale-window'
+import { pickupWindowCounts } from '@/lib/admin/items'
+import { saleProgress } from '@/lib/admin/sale-progress'
+import { rewriteCount } from '@/lib/import/rewrite'
 import { aiEnabled } from '@/lib/ai/client'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { photoUrl } from '@/lib/photo-url'
 import { BulkQueue } from '@/components/admin/BulkQueue'
 import { ImportDrop } from '@/app/admin/items/import/ImportDrop'
+import { PickupWindowBulk } from './PickupWindowBulk'
+import { DescriptionsBulk } from './DescriptionsBulk'
+import { SaleProgress } from '@/components/admin/SaleProgress'
 import { PickupWindow } from '@/components/PickupWindow'
 import { Price } from '@/components/Price'
 import { AdminNav } from '@/components/admin/AdminNav'
@@ -29,10 +36,6 @@ const STATUS_CLASS: Record<string, string> = {
   HIDDEN: 'hidden',
 }
 
-function toDateInput(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-
 /**
  * The seller's item-entry screen: one drop zone for photos, plus the item
  * table below. Wrapped in the shared AdminNav shell (Task 19) — the orders
@@ -45,11 +48,17 @@ function toDateInput(d: Date): string {
  * make before they could start, and never a choice worth making. Both halves
  * of the toggle asked for the same photos.
  *
- * Category and pickup window "carry forward" from the most recently created
- * item (across page loads, not just within one session) so a returning seller
- * doesn't have to re-pick them every visit — see `BulkQueue`, which is where
- * they are typed. The AI import asks for neither at drop time: its review
+ * The category "carries forward" from the most recently created item (across
+ * page loads, not just within one session) so a returning seller doesn't have
+ * to re-pick it every visit — see `BulkQueue`, which is where it is typed.
+ * The pickup window does NOT: it comes from the sale's collection window in
+ * Settings (`saleWindow`), because a window inherited item-to-item is a window
+ * nobody ever re-reads, and one stale week propagated from it into every
+ * listing in the shop. The AI import asks for neither at drop time: its review
  * screen sets both across the whole batch at once.
+ *
+ * The same window, applied across the items that already exist, is
+ * `PickupWindowBulk` below — the repair for the shop this change prevents.
  */
 // See src/app/admin/settings/page.tsx for why every admin page is forced
 // dynamic. This page no longer reads `searchParams` — the mode toggle was the
@@ -60,7 +69,8 @@ export const dynamic = 'force-dynamic'
 export default async function AdminItemsPage() {
   await releaseExpiredHolds()
 
-  const [items, categories, lastItem, settings, claimedCount] = await Promise.all([
+  const [items, categories, lastItem, settings, claimedCount, windowCounts, progress, describable] =
+    await Promise.all([
     db.item.findMany({
       orderBy: { createdAt: 'desc' },
       include: { category: true, photos: { orderBy: { position: 'asc' } } },
@@ -69,14 +79,18 @@ export default async function AdminItemsPage() {
     db.item.findFirst({ orderBy: { createdAt: 'desc' }, include: { category: true } }),
     getSettings(),
     db.order.count({ where: { status: OrderStatus.CLAIMED_PAID } }),
+    pickupWindowCounts(),
+    saleProgress(),
+    rewriteCount(),
   ])
 
-  const today = new Date()
-  const inAWeek = new Date(today.getTime() + 6 * 86_400_000)
-
   const initialCategory = lastItem?.category.name ?? categories[0]?.name ?? ''
-  const initialPickupFrom = lastItem ? toDateInput(lastItem.pickupFrom) : toDateInput(today)
-  const initialPickupTo = lastItem ? toDateInput(lastItem.pickupTo) : toDateInput(inAWeek)
+  // The pickup window comes from the sale's own window, NOT from the last item
+  // the seller made. Inheriting it item-to-item is what carried one week
+  // forward until every listing in the shop pointed at days that had passed:
+  // nothing in that chain ever asked again. Settings is one place to fix, and
+  // an unset window falls back to today → today+14 rather than to the past.
+  const sale = saleWindowInputs(settings)
   const categoryNames = categories.map((c) => c.name)
   // Read once per render on the server: a key added to the environment starts
   // working on the next page load, and its absence never reaches the browser
@@ -113,15 +127,22 @@ export default async function AdminItemsPage() {
           <AdminNav active="items" itemCount={items.length} ordersAlertCount={claimedCount} categoryCount={categories.length} />
 
           <main className={styles.shell}>
+            {/* First on the screen because it is the first thing worth
+                knowing on opening it: how much has gone, and how much of the
+                money has come in. */}
+            <SaleProgress progress={progress} />
+
             <section className={styles.panel}>
               <div className={styles.ptitle}>
                 <h2>הוספת פריטים</h2>
-                {/* Only the capture-time queue actually carries these forward —
-                    it is where a category and a pickup window are typed. The AI
-                    import sets both on the review screen, across the batch, so
-                    promising it here would be a promise about another screen. */}
+                {/* Only the capture-time queue actually carries the category
+                    forward — it is where one is typed. The AI import sets it on
+                    the review screen, across the batch, so promising it here
+                    would be a promise about another screen. It says "category"
+                    and not "fields" because the dates beside it no longer come
+                    from the last item at all; they come from the sale window. */}
                 {!aiImport && initialCategory !== '' && (
-                  <span className="carry">שדות ממשיכים מהפריט הקודם</span>
+                  <span className="carry">הקטגוריה ממשיכה מהפריט הקודם</span>
                 )}
               </div>
               {/* One item is one photo — said out loud, because this screen
@@ -138,8 +159,8 @@ export default async function AdminItemsPage() {
                 <BulkQueue
                   categories={categoryNames}
                   initialCategory={initialCategory}
-                  initialPickupFrom={initialPickupFrom}
-                  initialPickupTo={initialPickupTo}
+                  initialPickupFrom={sale.from}
+                  initialPickupTo={sale.to}
                 />
               )}
             </section>
@@ -148,6 +169,20 @@ export default async function AdminItemsPage() {
               <div className={styles.ptitle}>
                 <h2>הפריטים שלי</h2>
               </div>
+              {/* Above the table because it is about every row in it: one sale
+                  window, applied across the shop. Hidden when there is nothing
+                  to apply it to — on an empty shop the only thing worth saying
+                  about the window is in Settings. */}
+              {items.length > 0 && <DescriptionsBulk rewritable={describable} aiOn={aiImport} />}
+              {items.length > 0 && (
+                <PickupWindowBulk
+                  movable={windowCounts.movable}
+                  held={windowCounts.held}
+                  initialFrom={sale.from}
+                  initialTo={sale.to}
+                  saleWindowEnded={saleWindowEnded(settings)}
+                />
+              )}
               {items.length === 0 ? (
                 <p className={styles.empty}>עדיין לא נוספו פריטים.</p>
               ) : (

@@ -1,7 +1,9 @@
+import type { Metadata } from 'next'
 import { ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getPublicCategories } from '@/lib/items'
 import { NOT_PUBLIC_STATUSES } from '@/lib/visibility'
+import { shareCard } from '@/lib/share-card'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { itemsOrderBy, itemsWhere, parseGridParams } from '@/lib/grid'
@@ -22,6 +24,48 @@ import { ItemCard } from '@/components/ItemCard'
  * this export.
  */
 export const dynamic = 'force-dynamic'
+
+/**
+ * What the shop's own link looks like when the seller pastes it into a family
+ * or neighbourhood WhatsApp group — which is where nearly all of this shop's
+ * traffic comes from.
+ *
+ * The photograph is the newest available item's, not a fixed banner. It costs
+ * nothing to keep current, it shows a buyer something actually for sale right
+ * now, and re-sharing the same link after a week previews the week's new
+ * things rather than last week's.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const [settings, newest] = await Promise.all([
+    getSettings(),
+    db.item.findFirst({
+      // Not `publicItemWhere`: that keeps SOLD items, because the grid shows
+      // them dimmed. A preview is an invitation, and the newest thing in the
+      // shop being the one that just went would advertise exactly what nobody
+      // can have. Same predicate as the hero's count below.
+      where: { status: { notIn: [...NOT_PUBLIC_STATUSES, ItemStatus.SOLD] } },
+      orderBy: { createdAt: 'desc' },
+      select: { photos: { orderBy: { position: 'asc' }, take: 1 } },
+    }),
+  ])
+
+  const cover = newest?.photos[0] ?? null
+  // Falls back to a description of the shop rather than to the seller's name:
+  // a first-run shop has neither filled in, and an empty og:title previews as
+  // the bare URL all over again.
+  const title = settings.shopName.trim() !== '' ? settings.shopName : 'מכירת חצר'
+  const tagline = settings.tagline.trim()
+
+  return shareCard({
+    title,
+    description:
+      tagline !== ''
+        ? tagline
+        : `רהיטים, מכשירים וספרים שכבר לא בשימוש${settings.city.trim() !== '' ? `, לאיסוף מ${settings.city.trim()}` : ''}.`,
+    photo: cover && { id: cover.id, width: cover.width, height: cover.height },
+    path: '/',
+  })
+}
 
 export default async function Home({
   searchParams,
@@ -72,7 +116,12 @@ export default async function Home({
               {availableCount} פריטים זמינים
             </span>
             <span className="meta">תשלום בביט</span>
-            <span className="meta">איסוף עצמי בלבד</span>
+            {/* Names the city, the same way the sentence above it does: "pickup
+                only" told a buyer what the shop would not do, and the thing
+                they actually need to know before paying is where they are
+                driving. Falls back to the bare claim while `city` is unset —
+                inventing a city the seller never typed is worse than vague. */}
+            <span className="meta">{settings.city !== '' ? `איסוף עצמי מ${settings.city}` : 'איסוף עצמי בלבד'}</span>
           </div>
         </section>
 

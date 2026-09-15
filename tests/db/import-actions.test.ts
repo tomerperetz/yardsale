@@ -15,7 +15,7 @@ import { photoDir, photoFilename } from '@/lib/images'
 import { utcDate } from '@/lib/dates'
 import { DRAFT_NAME } from '@/lib/admin/draft'
 import { resetDb } from '../helpers/db'
-import { makeCategory, makeOrder } from '../helpers/factories'
+import { makeCategory, makeOrder, makeSettings } from '../helpers/factories'
 import {
   movePhoto,
   removePhoto,
@@ -136,7 +136,14 @@ describe('movePhoto', () => {
     expect(await db.photo.count({ where: { itemId: a.id } })).toBe(0)
   })
 
-  it('creates a fresh draft in the same batch, with the carried-forward category and window', async () => {
+  it("creates a fresh draft in the same batch, carrying the category forward and taking the window from the sale", async () => {
+    // The two halves of `carriedForward()` come from different places on
+    // purpose: the category from the last item, because a seller
+    // photographing one room drops one kind of thing; the window from
+    // Settings, because a window inherited item-to-item is one nobody
+    // re-reads — which is how a week that had already passed ended up on
+    // nineteen of twenty live listings.
+    await makeSettings({ saleFrom: utcDate(2026, 9, 15), saleTo: utcDate(2026, 9, 28) })
     const category = await makeCategory('ריהוט')
     const a = await makeDraft({
       categoryId: category.id,
@@ -157,8 +164,9 @@ describe('movePhoto', () => {
       name: DRAFT_NAME,
       categoryId: category.id,
     })
-    expect(created?.pickupFrom).toEqual(utcDate(2026, 10, 1))
-    expect(created?.pickupTo).toEqual(utcDate(2026, 10, 5))
+    // Settings' window, NOT the October one on the item this photo came off.
+    expect(created?.pickupFrom).toEqual(utcDate(2026, 9, 15))
+    expect(created?.pickupTo).toEqual(utcDate(2026, 9, 28))
 
     expect(await itemIdOf(photo.id)).toBe(result.itemId)
     // And the item it came off is still there, photoless.

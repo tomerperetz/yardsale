@@ -25,6 +25,12 @@ function emptySettings(): Settings {
     slotMorning: '',
     slotAfternoon: '',
     slotEvening: '',
+    // Unset, not "today through a fortnight": the fallback belongs to
+    // `saleWindow()` (src/lib/sale-window.ts), which every reader goes
+    // through. Baking dates in here would make a shop that has never been
+    // configured indistinguishable from one the seller set to these days.
+    saleFrom: null,
+    saleTo: null,
     holdMinutes: 15,
     dismissedMerges: [],
   }

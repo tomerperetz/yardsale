@@ -20,9 +20,11 @@ vi.mock('@/lib/ai/client', () => ({ clusterPhotos, captionItem, aiEnabled }))
 
 import { db } from '@/lib/db'
 import { photoDir, photoFilename } from '@/lib/images'
-import { clusterBatch } from '@/lib/import/batch'
+import { clusterBatch, suggestForItem } from '@/lib/import/batch'
 import { resetDb } from '../helpers/db'
-import { makeItem } from '../helpers/factories'
+import { makeItem, makeSettings } from '../helpers/factories'
+import { startOfUtcDay, utcDate } from '@/lib/dates'
+import { DEFAULT_SALE_DAYS } from '@/lib/sale-window'
 
 const BATCH = 'batch-under-test'
 
@@ -37,7 +39,7 @@ beforeEach(async () => {
   captionItem.mockReset()
   aiEnabled.mockReset()
   aiEnabled.mockReturnValue(true)
-  captionItem.mockResolvedValue({ ok: true, value: { headline: 'כותרת', description: 'תיאור', category: '' } })
+  captionItem.mockResolvedValue({ ok: true, value: { headline: 'כותרת', description: 'תיאור', category: '' , priceAgorot: 0 } })
 })
 
 afterEach(() => rm(dir, { recursive: true, force: true }))
@@ -77,7 +79,8 @@ async function assertEveryPhotoPlaced(ids: string[], itemIds: string[]) {
 }
 
 describe('clusterBatch — the successful path', () => {
-  it('creates one DRAFT item per group, carrying the batch, price 0 and the carried-forward defaults', async () => {
+  it("creates one DRAFT item per group, carrying the batch, price 0, the last item's category and the sale's window", async () => {
+    await makeSettings({ saleFrom: utcDate(2026, 9, 15), saleTo: utcDate(2026, 9, 28) })
     const previous = await makeItem()
     const ids = await makePhotos([null, null, null])
     ok([[ids[0], ids[1]], [ids[2]]])
@@ -94,8 +97,11 @@ describe('clusterBatch — the successful path', () => {
       expect(item.priceAgorot).toBe(0)
       expect(item.importBatchId).toBe(BATCH)
       expect(item.categoryId).toBe(previous.categoryId)
-      expect(item.pickupFrom).toEqual(previous.pickupFrom)
-      expect(item.pickupTo).toEqual(previous.pickupTo)
+      // The window comes off Settings, not off `previous` — an imported item
+      // must never inherit a window the seller has not looked at since.
+      expect(item.pickupFrom).toEqual(utcDate(2026, 9, 15))
+      expect(item.pickupTo).toEqual(utcDate(2026, 9, 28))
+      expect(item.pickupFrom).not.toEqual(previous.pickupFrom)
     }
   })
 
@@ -135,7 +141,7 @@ describe('clusterBatch — the successful path', () => {
     ok([ids])
     captionItem.mockResolvedValue({
       ok: true,
-      value: { headline: 'שולחן עץ', description: 'שני שריטות בפינה.', category: '' },
+      value: { headline: 'שולחן עץ', description: 'שני שריטות בפינה.', category: '' , priceAgorot: 0 },
     })
 
     const result = await clusterBatch(BATCH)
@@ -162,7 +168,7 @@ describe('clusterBatch — the successful path', () => {
     const chosen = await db.category.create({ data: { name: 'כלי מטבח', slug: 'kitchen' } })
     const ids = await makePhotos([null])
     ok([ids])
-    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: 'כלי מטבח' } })
+    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: 'כלי מטבח' , priceAgorot: 0 } })
 
     const result = await clusterBatch(BATCH)
     if (!result.ok) throw new Error('expected ok')
@@ -172,12 +178,46 @@ describe('clusterBatch — the successful path', () => {
     expect(item.categoryId).toBe(chosen.id)
   })
 
+  it('writes the suggested price onto the draft, so the seller edits a number instead of inventing one', async () => {
+    await makeItem()
+    const ids = await makePhotos([null])
+    ok([ids])
+    captionItem.mockResolvedValue({
+      ok: true,
+      value: { headline: 'ספה', description: 'תיאור', category: '', priceAgorot: 45_000 },
+    })
+
+    const result = await clusterBatch(BATCH)
+    if (!result.ok) throw new Error('expected ok')
+
+    const item = await db.item.findUniqueOrThrow({ where: { id: result.itemIds[0] } })
+    expect(item.priceAgorot).toBe(45_000)
+  })
+
+  it('leaves the draft unpriced when the model declined to price it', async () => {
+    // 0 is what an unpriced draft already holds, and what the publish guard
+    // refuses on — so a model that would not guess leaves the gate closed.
+    await makeItem()
+    const ids = await makePhotos([null])
+    ok([ids])
+    captionItem.mockResolvedValue({
+      ok: true,
+      value: { headline: 'חפץ', description: 'לא ברור', category: '', priceAgorot: 0 },
+    })
+
+    const result = await clusterBatch(BATCH)
+    if (!result.ok) throw new Error('expected ok')
+
+    const item = await db.item.findUniqueOrThrow({ where: { id: result.itemIds[0] } })
+    expect(item.priceAgorot).toBe(0)
+  })
+
   it('keeps the carried-forward category when the model names none', async () => {
     const previous = await makeItem()
     await db.category.create({ data: { name: 'כלי מטבח', slug: 'kitchen' } })
     const ids = await makePhotos([null])
     ok([ids])
-    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: '' } })
+    captionItem.mockResolvedValue({ ok: true, value: { headline: 'סיר', description: 'תיאור', category: '' , priceAgorot: 0 } })
 
     const result = await clusterBatch(BATCH)
     if (!result.ok) throw new Error('expected ok')
@@ -186,7 +226,7 @@ describe('clusterBatch — the successful path', () => {
     expect(item.categoryId).toBe(previous.categoryId)
   })
 
-  it('falls back to today plus a week, and a category of its own, in a shop with no items yet', async () => {
+  it('falls back to today plus a fortnight, and a category of its own, in a shop with no items and no sale window', async () => {
     const ids = await makePhotos([null])
     ok([ids])
 
@@ -195,7 +235,10 @@ describe('clusterBatch — the successful path', () => {
 
     const item = await db.item.findUniqueOrThrow({ where: { id: result.itemIds[0] }, include: { category: true } })
     expect(item.category.name).toBe('כללי')
-    expect(item.pickupTo.getTime() - item.pickupFrom.getTime()).toBe(6 * 86_400_000)
+    expect(item.pickupTo.getTime() - item.pickupFrom.getTime()).toBe(DEFAULT_SALE_DAYS * 86_400_000)
+    // Today, never a day that has already gone: the fallback is the one
+    // window in the app nobody chose, so it can only ever point forwards.
+    expect(item.pickupFrom).toEqual(startOfUtcDay(new Date()))
   })
 })
 
@@ -296,7 +339,7 @@ describe('clusterBatch when one caption fails', () => {
     captionItem.mockImplementation(async (images) =>
       images[0].toString() === ids[0]
         ? { ok: false, reason: 'FAILED' }
-        : { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '' } },
+        : { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '' , priceAgorot: 0 } },
     )
 
     const result = await clusterBatch(BATCH)
@@ -327,7 +370,7 @@ describe('clusterBatch when one caption fails', () => {
     ok([[ids[0]], [ids[1]]])
     captionItem.mockImplementation(async (images) => {
       if (images[0].toString() === ids[0]) throw new Error('boom')
-      return { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '' } }
+      return { ok: true, value: { headline: 'מנורה', description: 'עובדת.', category: '' , priceAgorot: 0 } }
     })
 
     const result = await clusterBatch(BATCH)
@@ -437,7 +480,7 @@ describe('clusterBatch and the categories a caption proposes', () => {
     clusterPhotos.mockResolvedValue({ ok: true, value: [[ids[0]]] })
     captionItem.mockResolvedValue({
       ok: true,
-      value: { headline: 'אופני הרים', description: 'שלדה אפורה.', category: 'ספורט' },
+      value: { headline: 'אופני הרים', description: 'שלדה אפורה.', category: 'ספורט' , priceAgorot: 0 },
     })
 
     const result = await clusterBatch(BATCH)
@@ -460,7 +503,7 @@ describe('clusterBatch and the categories a caption proposes', () => {
     clusterPhotos.mockResolvedValue({ ok: true, value: [[ids[0]], [ids[1]]] })
     captionItem.mockResolvedValue({
       ok: true,
-      value: { headline: 'פריט', description: 'תיאור.', category: 'כלי גינה' },
+      value: { headline: 'פריט', description: 'תיאור.', category: 'כלי גינה' , priceAgorot: 0 },
     })
 
     const result = await clusterBatch(BATCH)
@@ -472,5 +515,146 @@ describe('clusterBatch and the categories a caption proposes', () => {
       include: { category: true },
     })
     expect(items.map((i) => i.category.name)).toEqual(['כלי גינה', 'כלי גינה'])
+  })
+})
+
+/**
+ * The same caption pass, aimed at one card: what `movePhoto(photoId, 'new')`
+ * fires once the seller has split a wrongly clustered group. Before it, that
+ * card arrived named "פריט חדש" with nothing else on it, and everything the
+ * model could read off the photograph was retyped by hand.
+ */
+describe('suggestForItem', () => {
+  /** A DRAFT with one photo on it, the way a move-to-new leaves things. */
+  async function draftWithPhoto() {
+    const item = await makeItem({ status: ItemStatus.DRAFT })
+    const [photoId] = await makePhotos([null])
+    await db.photo.update({ where: { id: photoId }, data: { itemId: item.id, position: 0 } })
+    return item
+  }
+
+  it('writes the name, description, category and price onto the card, and hands them back', async () => {
+    await db.category.create({ data: { name: 'ריהוט', slug: 'rihut' } })
+    const item = await draftWithPhoto()
+    captionItem.mockResolvedValue({
+      ok: true,
+      value: { headline: 'כורסה', description: 'נוחה מאוד.', category: 'ריהוט', priceAgorot: 25_000 },
+    })
+
+    const result = await suggestForItem(item.id)
+
+    expect(result).toEqual({
+      ok: true,
+      suggestion: { name: 'כורסה', description: 'נוחה מאוד.', price: '250', categoryName: 'ריהוט' },
+    })
+    const saved = await db.item.findUniqueOrThrow({ where: { id: item.id }, include: { category: true } })
+    expect(saved.name).toBe('כורסה')
+    expect(saved.priceAgorot).toBe(25_000)
+    expect(saved.category.name).toBe('ריהוט')
+  })
+
+  it('reports the stored values, not the model\'s — that is what the screen fills in', async () => {
+    // The seller's own spelling of a category wins over the model's, and the
+    // price is the rounded one. Reading back after the write is what keeps the
+    // fields on screen equal to the row, so no save is owed.
+    const item = await draftWithPhoto()
+    captionItem.mockResolvedValue({
+      ok: true,
+      value: { headline: '  שולחן  ', description: 'עץ מלא.', category: '', priceAgorot: 0 },
+    })
+
+    const result = await suggestForItem(item.id)
+    if (!result.ok) throw new Error('expected a suggestion')
+
+    const saved = await db.item.findUniqueOrThrow({ where: { id: item.id } })
+    expect(result.suggestion.name).toBe(saved.name)
+    // 0 agorot is "unpriced", and the price field holds '' for that, never '0'.
+    expect(result.suggestion.price).toBe('')
+  })
+
+  it('shows the model every photo on the card and offers it the seller\'s categories', async () => {
+    await db.category.create({ data: { name: 'ריהוט', slug: 'rihut2' } })
+    const item = await draftWithPhoto()
+
+    await suggestForItem(item.id)
+
+    expect(captionItem).toHaveBeenCalledTimes(1)
+    expect(captionItem.mock.calls[0][0]).toHaveLength(1)
+    expect(captionItem.mock.calls[0][1]).toContain('ריהוט')
+  })
+
+  it('makes no call at all when no key is configured', async () => {
+    aiEnabled.mockReturnValue(false)
+    const item = await draftWithPhoto()
+
+    expect(await suggestForItem(item.id)).toEqual({ ok: false, reason: 'NO_KEY' })
+    expect(captionItem).not.toHaveBeenCalled()
+  })
+
+  it('makes no call for a card with no photographs — there is nothing to show', async () => {
+    const item = await makeItem({ status: ItemStatus.DRAFT })
+
+    expect(await suggestForItem(item.id)).toEqual({ ok: false, reason: 'FAILED' })
+    expect(captionItem).not.toHaveBeenCalled()
+  })
+
+  it('reports a missing item rather than throwing at the seller mid-correction', async () => {
+    expect(await suggestForItem('no-such-item')).toEqual({ ok: false, reason: 'FAILED' })
+  })
+
+  it('passes the credit failure through, so the screen can stay quiet about it', async () => {
+    const item = await draftWithPhoto()
+    captionItem.mockResolvedValue({ ok: false, reason: 'OUT_OF_CREDIT' })
+
+    expect(await suggestForItem(item.id)).toEqual({ ok: false, reason: 'OUT_OF_CREDIT' })
+  })
+
+  it('leaves the card exactly as it was when the call fails', async () => {
+    // The batch pass blanks name and description on failure, which is safe
+    // only because nobody has seen those rows. Here the seller is looking at
+    // the card: silently emptying it would leave them a nameless row and no
+    // explanation, because the screen keeps quiet about a failed suggestion.
+    const item = await draftWithPhoto()
+    const before = await db.item.findUniqueOrThrow({ where: { id: item.id } })
+    captionItem.mockResolvedValue({ ok: false, reason: 'OUT_OF_CREDIT' })
+
+    await suggestForItem(item.id)
+
+    const after = await db.item.findUniqueOrThrow({ where: { id: item.id } })
+    expect(after.name).toBe(before.name)
+    expect(after.description).toBe(before.description)
+  })
+
+  it.each([ItemStatus.AVAILABLE, ItemStatus.RESERVED, ItemStatus.SOLD, ItemStatus.HIDDEN])(
+    'refuses to touch a %s item, without spending a call',
+    async (status) => {
+      // This action overwrites a name, a category and a price. It is only ever
+      // called with a draft the review screen just minted, and the guard is
+      // what keeps it from being pointed at a listing a buyer is reading or an
+      // item an order is holding.
+      const item = await draftWithPhoto()
+      await db.item.update({ where: { id: item.id }, data: { status } })
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      expect(await suggestForItem(item.id)).toEqual({ ok: false, reason: 'FAILED' })
+      expect(captionItem).not.toHaveBeenCalled()
+    },
+  )
+
+  it('stamps the item as written, so the shop-wide rewrite does not buy it again', async () => {
+    const item = await draftWithPhoto()
+
+    await suggestForItem(item.id)
+
+    const saved = await db.item.findUniqueOrThrow({ where: { id: item.id } })
+    expect(saved.descriptionWrittenAt).not.toBeNull()
+  })
+
+  it('does not throw when the model call itself throws', async () => {
+    const item = await draftWithPhoto()
+    captionItem.mockRejectedValue(new Error('socket hang up'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    expect(await suggestForItem(item.id)).toEqual({ ok: false, reason: 'FAILED' })
   })
 })

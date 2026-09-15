@@ -39,6 +39,26 @@ export function parseDate(raw: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+export type WindowResult = { error: string } | { from: Date; to: Date }
+
+/**
+ * A pickup window from the two `<input type="date">` strings that carry it,
+ * with the two refusals a bad one gets.
+ *
+ * Exported because three screens set a window — the item form, the import
+ * screen's bulk bar, and /admin/items' "apply to every item" — and a seller
+ * who mistypes one must hear the same sentence whichever screen they are on.
+ * A window is validated whole: one end alone cannot be checked at all without
+ * the item's stored other end, and every caller here has both.
+ */
+export function validatePickupWindow(fromRaw: string, toRaw: string): WindowResult {
+  const from = parseDate(fromRaw)
+  const to = parseDate(toRaw)
+  if (!from || !to) return { error: 'חלון איסוף לא תקין.' }
+  if (to.getTime() < from.getTime()) return { error: 'חלון האיסוף מסתיים לפני שהוא מתחיל.' }
+  return { from, to }
+}
+
 type ValidateResult =
   | { error: string }
   | { name: string; categoryName: string; priceAgorot: number; from: Date; to: Date }
@@ -53,12 +73,10 @@ function validate(input: ItemInput): ValidateResult {
   const priceAgorot = parseShekelInput(input.price)
   if (priceAgorot === null) return { error: 'מחיר לא תקין.' as const }
 
-  const from = parseDate(input.pickupFrom)
-  const to = parseDate(input.pickupTo)
-  if (!from || !to) return { error: 'חלון איסוף לא תקין.' as const }
-  if (to.getTime() < from.getTime()) return { error: 'חלון האיסוף מסתיים לפני שהוא מתחיל.' as const }
+  const window = validatePickupWindow(input.pickupFrom, input.pickupTo)
+  if ('error' in window) return { error: window.error }
 
-  return { name, categoryName, priceAgorot, from, to }
+  return { name, categoryName, priceAgorot, from: window.from, to: window.to }
 }
 
 /**
@@ -228,6 +246,84 @@ export async function setItemStatus(id: string, status: SellableStatus): Promise
     }
 
     return { ok: true as const, id, slug: item.slug }
+  })
+}
+
+/**
+ * An item a live order is counting on, as a `where` — the same claim
+ * `setItemStatus` refuses to move an item out from under, expressed once so
+ * the bulk pickup-window change enforces it as a single query rather than as
+ * its own reading of the same rule.
+ *
+ * Two shapes, because they are two different facts: a RESERVED item is mid
+ * hold, and an item on a PENDING_PAYMENT/CLAIMED_PAID/PAID order was spoken
+ * for through the shop. Cancelled and expired orders have released their
+ * claim, so an item that appears only on those is the seller's to move.
+ *
+ * A relation filter, not a column comparison: `NOT` over it becomes
+ * `NOT EXISTS`, which is true for an item with no orders at all — where
+ * `"orderId" <> ...` over a nullable column would quietly be NULL and drop
+ * every unordered item out of the update.
+ */
+export const HELD_BY_LIVE_ORDER: Prisma.ItemWhereInput = {
+  OR: [
+    { status: ItemStatus.RESERVED },
+    { orderItems: { some: { order: { status: { in: LIVE_ORDER_STATUSES } } } } },
+  ],
+}
+
+export type PickupWindowCounts = { movable: number; held: number }
+
+/**
+ * How many items a bulk window change would move, and how many it would
+ * leave alone — so the screen can say which before the seller commits,
+ * instead of reporting it afterwards.
+ *
+ * An estimate by the time it is read, which is why `setPickupWindowForAll`
+ * returns its own exact counts: an order placed between this render and that
+ * click changes the answer, and the item it claims is protected by the same
+ * predicate either way.
+ */
+export async function pickupWindowCounts(): Promise<PickupWindowCounts> {
+  const [total, held] = await Promise.all([db.item.count(), db.item.count({ where: HELD_BY_LIVE_ORDER })])
+  return { movable: total - held, held }
+}
+
+export type PickupWindowResult =
+  | { ok: true; updated: number; skipped: number }
+  | { ok: false; error: string }
+
+/**
+ * Sets one pickup window across every item in the shop, except those a live
+ * order is holding.
+ *
+ * This exists because a window that has gone stale has gone stale on all of
+ * them at once: nineteen of twenty live items told buyers to collect during a
+ * week that had already passed, and fixing that one item at a time is twenty
+ * round trips through the edit screen.
+ *
+ * What it will not touch is an item under a live order's claim. That order
+ * recorded its own `pickupDate` inside the window the buyer was shown, and
+ * moving the item's window out from under them would leave the shop promising
+ * one thing and the order saying another — to a buyer who already picked a
+ * slot and, on a CLAIMED_PAID or PAID order, already sent money. Those items
+ * keep their dates and are reported as skipped rather than silently passed
+ * over, so the seller knows the shop is not uniform and why.
+ *
+ * The count and the write share one transaction and one predicate, so the
+ * numbers reported back describe the rows that actually moved.
+ */
+export async function setPickupWindowForAll(fromRaw: string, toRaw: string): Promise<PickupWindowResult> {
+  const window = validatePickupWindow(fromRaw, toRaw)
+  if ('error' in window) return { ok: false, error: window.error }
+
+  return db.$transaction(async (tx) => {
+    const skipped = await tx.item.count({ where: HELD_BY_LIVE_ORDER })
+    const moved = await tx.item.updateMany({
+      where: { NOT: HELD_BY_LIVE_ORDER },
+      data: { pickupFrom: window.from, pickupTo: window.to },
+    })
+    return { ok: true as const, updated: moved.count, skipped }
   })
 }
 

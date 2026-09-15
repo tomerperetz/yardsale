@@ -20,6 +20,17 @@ model Item {
   status        ItemStatus  @default(DRAFT)
   sortIndex     Int         @default(0)
   importBatchId String? // the drop this item was created from; null for hand-made items
+  // When a model last wrote this item's description, or null for one no model
+  // has written. Not `updatedAt`, which any edit bumps: this exists so that
+  // the shop-wide rewrite can tell what it has already paid for. Without it a
+  // seller who presses the button twice buys the same descriptions twice.
+  descriptionWrittenAt DateTime?
+  // How many times a model has been asked to describe this item and come back
+  // with nothing usable. The retry it buys is for a network blip; the CAP it
+  // buys is the point — without one, an item the model will never describe
+  // stays at the front of the queue, is paid for again on every press, and
+  // keeps the screen telling the seller to press again.
+  descriptionAttempts   Int      @default(0)
   photos        Photo[]
   orderItems    OrderItem[]
   createdAt     DateTime    @default(now())
@@ -85,7 +96,7 @@ model OrderItem {
 }
 
 model Settings {
-  id              Int      @id @default(1) // singleton row, always id = 1
+  id              Int       @id @default(1) // singleton row, always id = 1
   shopName        String
   tagline         String
   bitPhone        String
@@ -94,8 +105,15 @@ model Settings {
   slotMorning     String // e.g. "09:00–12:00"
   slotAfternoon   String
   slotEvening     String
-  holdMinutes     Int      @default(15)
-  dismissedMerges String[] @default([]) // "<idA>:<idB>", ids sorted; see §8
+  // The sale's collection window: the days the seller is home to hand things
+  // over, and what every new item's pickup window opens at. Nullable because
+  // "not set yet" is a real state — a first-run shop has no dates, and the
+  // code falls back to today → today+14 rather than inventing a stored one.
+  // Both ends move together: a row never holds one without the other.
+  saleFrom        DateTime? @db.Date
+  saleTo          DateTime? @db.Date
+  holdMinutes     Int       @default(15)
+  dismissedMerges String[]  @default([]) // "<idA>:<idB>", ids sorted; see §8
 }
 
 enum ItemStatus {
