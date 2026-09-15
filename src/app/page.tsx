@@ -72,7 +72,12 @@ export default async function Home({
               {availableCount} פריטים זמינים
             </span>
             <span className="meta">תשלום בביט</span>
-            <span className="meta">איסוף עצמי בלבד</span>
+            {/* Names the city, the same way the sentence above it does: "pickup
+                only" told a buyer what the shop would not do, and the thing
+                they actually need to know before paying is where they are
+                driving. Falls back to the bare claim while `city` is unset —
+                inventing a city the seller never typed is worse than vague. */}
+            <span className="meta">{settings.city !== '' ? `איסוף עצמי מ${settings.city}` : 'איסוף עצמי בלבד'}</span>
           </div>
         </section>
 
