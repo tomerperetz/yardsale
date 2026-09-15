@@ -12,6 +12,7 @@ const NOT_DELETABLE = new Set(['RESERVED', 'SOLD'])
 
 const STATUS_LABEL: Record<SellableStatus, string> = {
   AVAILABLE: 'זמין למכירה',
+  RESERVED: 'שמור',
   HIDDEN: 'מוסתר',
   SOLD: 'נמכר',
 }
@@ -19,6 +20,8 @@ const STATUS_LABEL: Record<SellableStatus, string> = {
 /** What the seller has just done, said back to them in the state they are now in. */
 const STATUS_NOTE: Record<SellableStatus, string> = {
   AVAILABLE: 'הפריט מוצג בחנות. אפשר להסתיר אותו זמנית או לסמן שנמכר.',
+  RESERVED:
+    'הפריט מוצג בחנות ומסומן "שמור" — רואים אותו אבל אי אפשר להוסיף לסל. מתאים למישהו שסיכם שיבוא לקחת. אפשר להחזיר אותו למכירה בכל רגע.',
   HIDDEN: 'הפריט ירד מהחנות ונשמר אצלכם. הקישור אליו לא עובד כרגע, ויחזור לעבוד כשתחזירו אותו למכירה.',
   SOLD: 'הפריט מסומן כנמכר ומוצג בחנות מעומעם. אפשר להחזיר אותו למכירה.',
 }

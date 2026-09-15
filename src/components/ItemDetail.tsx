@@ -32,6 +32,10 @@ export function ItemDetail({
   const cart = useCart()
   const [activeIndex, setActiveIndex] = useState(0)
   const sold = item.status === 'SOLD'
+  // Not folded into `sold`: the page stays in full colour and says something
+  // different, because a reserved item may be back tomorrow and a buyer who
+  // wants it should know it is worth asking.
+  const reserved = item.status === 'RESERVED'
   const photos = item.photos
   const active = photos[activeIndex] ?? photos[0]
 
@@ -98,6 +102,8 @@ export function ItemDetail({
       <div className="foot-btn">
         {sold ? (
           <p className="sold-note">הפריט נמכר</p>
+        ) : reserved ? (
+          <p className="sold-note">הפריט שמור למישהו אחר כרגע</p>
         ) : (
           <button type="button" className="btn-primary btn-accent" onClick={() => cart.add(item.id)}>
             הוספה לסל

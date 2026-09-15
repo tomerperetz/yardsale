@@ -75,7 +75,9 @@ export default function CartPage() {
                     {line.status === 'AVAILABLE' ? (
                       <Price agorot={line.priceAgorot} className="p" />
                     ) : (
-                      <span className="p sold">הפריט נמכר בינתיים</span>
+                      <span className="p sold">
+                        {line.status === 'RESERVED' ? 'הפריט נשמר למישהו אחר בינתיים' : 'הפריט נמכר בינתיים'}
+                      </span>
                     )}
                     <button
                       type="button"

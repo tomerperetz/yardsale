@@ -186,6 +186,11 @@ header {
   text-align: center; font-weight: 700; font-size: 14px; letter-spacing: 0.04em;
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
 }
+/* Reserved is not sold: the photo stays in full colour (the card is not given
+   .sold) and the badge is the accent rather than near-black, because the item
+   may well be back tomorrow. Same shape and position, so the two read as the
+   same kind of fact about the item. */
+.reserved-tag { background: rgba(200, 87, 51, 0.92); }
 
 /* ── item detail ────────────────────────────────────────────
    Shared by the standalone /item/[slug] page and the @modal quick-look

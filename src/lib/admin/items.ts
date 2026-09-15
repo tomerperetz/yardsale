@@ -233,7 +233,13 @@ export async function setItemStatus(id: string, status: SellableStatus): Promise
     if (item.status === ItemStatus.DRAFT) {
       return { ok: false as const, error: 'הפריט עדיין טיוטה. פרסמו אותו קודם.' }
     }
-    if (item.status === ItemStatus.RESERVED) {
+    // Only a RESERVED that a live ORDER put there is untouchable. The seller
+    // sets the same status by hand — "someone is coming on Friday for it" —
+    // and must be able to take it back off, which is the whole point of having
+    // a status rather than hiding the item. Which of the two this is, is not
+    // stored: it is whether an order is currently counting on the item, which
+    // the query above already asked.
+    if (item.status === ItemStatus.RESERVED && item.orderItems.length > 0) {
       return { ok: false as const, error: HELD_BY_ORDER }
     }
     if (item.orderItems.length > 0) {

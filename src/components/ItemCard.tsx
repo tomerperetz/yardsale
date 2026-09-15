@@ -10,12 +10,20 @@ import { photoUrl } from '@/lib/photo-url'
 type CardItem = Item & { category: Category; photos: Photo[] }
 
 /**
- * A grid card. Available and reserved items link through to the item page;
- * sold items stay inline, desaturated, and are never links — see task-13 brief §7.
+ * A grid card.
+ *
+ * Three states, not two. Available links through and can be added to the cart.
+ * Sold stays inline, desaturated, and is never a link — see task-13 brief §7.
+ * Reserved sits between them: still a link, because it may come back and
+ * because a buyer may want to ask, but with no add button and a badge saying
+ * so. Before that badge existed, a reserved item looked exactly like an
+ * available one and the refusal arrived at checkout, after the buyer had
+ * filled in their name and phone.
  */
 export function ItemCard({ item }: { item: CardItem }) {
   const cart = useCart()
   const sold = item.status === 'SOLD'
+  const reserved = item.status === 'RESERVED'
   const href = `/item/${item.slug}`
   const photo = item.photos[0] as Photo | undefined
   const photoSrc = photo ? photoUrl(photo.id, 800) : undefined
@@ -34,6 +42,8 @@ export function ItemCard({ item }: { item: CardItem }) {
         <span className="cat">{item.category.name}</span>
         {sold ? (
           <div className="sold-tag">נמכר</div>
+        ) : reserved ? (
+          <div className="sold-tag reserved-tag">שמור</div>
         ) : (
           <button
             type="button"
