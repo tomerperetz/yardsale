@@ -236,8 +236,7 @@ describe('rewriteDescriptions', () => {
     // again, `remaining` sticks, and `doneMessage` goes on printing
     // "נשארו פריט אחד — לחצו שוב להמשך" — the screen instructing the seller to
     // repeat a call that cannot succeed.
-    const older = []
-    for (let i = 0; i < 12; i++) older.push(await itemWithPhoto())
+    for (let i = 0; i < 12; i++) await itemWithPhoto()
     const doomed = await itemWithPhoto() // newest, so selected first
 
     // The stored file's bytes are the photo's own id (see `itemWithPhoto`),
@@ -273,7 +272,6 @@ describe('rewriteDescriptions', () => {
     captionItem.mockClear()
     expect(await rewriteDescriptions()).toMatchObject({ rewritten: 0, remaining: 0 })
     expect(captionItem).not.toHaveBeenCalled()
-    expect(older).toHaveLength(12)
   })
 
   it('counts an empty answer as a spent attempt — the call was paid for', async () => {
