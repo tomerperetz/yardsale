@@ -45,7 +45,7 @@ export function DescriptionsBulk({ rewritable, aiOn }: { rewritable: number; aiO
         setError(result.error)
         return
       }
-      setFlash(doneMessage(result.rewritten, result.failed, result.reason))
+      setFlash(doneMessage(result.rewritten, result.failed, result.remaining, result.reason))
       router.refresh()
     } catch (err) {
       console.error('[items] rewriting the descriptions failed:', err)
@@ -60,7 +60,7 @@ export function DescriptionsBulk({ rewritable, aiOn }: { rewritable: number; aiO
     <section className={styles.windowBulk}>
       {confirming ? (
         <div className={styles.windowConfirm}>
-          <span>{`לכתוב מחדש את התיאור של ${itemCount(rewritable)}?`}</span>
+          <span>{`לכתוב מחדש את התיאור של ${itemCount(Math.min(rewritable, BATCH_LIMIT))}?`}</span>
           <button type="button" className="btn btn-accent" disabled={busy} onClick={() => void apply()}>
             {busy ? 'כותב…' : 'כן, לשפר'}
           </button>
@@ -99,6 +99,13 @@ export function DescriptionsBulk({ rewritable, aiOn }: { rewritable: number; aiO
   )
 }
 
+/**
+ * How many one press rewrites. Mirrors `BATCH_LIMIT` in
+ * src/lib/import/rewrite.ts — the server enforces it; this only has to say the
+ * same number, or the confirmation promises work the press will not do.
+ */
+const BATCH_LIMIT = 12
+
 /** "פריט אחד" / "7 פריטים" — Hebrew counts one item by name, not by number. */
 function itemCount(n: number): string {
   return n === 1 ? 'פריט אחד' : `${n} פריטים`
@@ -111,16 +118,29 @@ function itemCount(n: number): string {
  */
 function note(rewritable: number, aiOn: boolean): string {
   if (!aiOn) return 'שיפור תיאורים אוטומטי כבוי: לא הוגדר מפתח API.'
-  if (rewritable === 0) return 'אין פריטים עם תמונות לשפר. פריטים שנמכרו לא משתנים.'
-  return `נכתוב מחדש את התיאור של ${itemCount(rewritable)} לפי התמונות שלהם. השם, הקטגוריה והמחיר לא ישתנו, ופריטים שנמכרו לא ייגעו.`
+  if (rewritable === 0) {
+    return 'לכל הפריטים כבר יש תיאור שנכתב אוטומטית. פריטים שנמכרו, טיוטות מייבוא פתוח ופריטים בלי תמונות לא נכללים.'
+  }
+
+  const now = Math.min(rewritable, BATCH_LIMIT)
+  const rest =
+    rewritable > BATCH_LIMIT ? ` זה ${itemCount(now)} מתוך ${rewritable} — אפשר ללחוץ שוב להמשך.` : ''
+
+  return `נכתוב מחדש את התיאור של ${itemCount(now)} לפי התמונות שלהם. השם, הקטגוריה והמחיר לא ישתנו, ופריטים שנמכרו לא ייגעו.${rest}`
 }
 
-/** What happened, in the numbers the server came back with. */
-function doneMessage(rewritten: number, failed: number, reason: string | null): string {
+/**
+ * What happened, in the numbers the server came back with — including what is
+ * left, because a press that stopped at twelve has to say so or the seller
+ * believes the job is finished.
+ */
+function doneMessage(rewritten: number, failed: number, remaining: number, reason: string | null): string {
   const done = rewritten === 0 ? 'לא שונה אף תיאור.' : `נכתבו מחדש התיאורים של ${itemCount(rewritten)}.`
-  if (failed === 0) return done
+  const left = remaining > 0 ? ` נשארו ${itemCount(remaining)} — לחצו שוב להמשך.` : ''
+
+  if (failed === 0) return `${done}${left}`
   if (reason === 'OUT_OF_CREDIT') {
-    return `${done} השאר נעצרו: אין יתרה בחשבון הבינה המלאכותית.`
+    return `${done} השאר נעצרו: אין יתרה בחשבון הבינה המלאכותית.${left}`
   }
-  return `${done} ${itemCount(failed)} לא השתנו והתיאור הקודם שלהם נשמר.`
+  return `${done} ${itemCount(failed)} לא השתנו והתיאור הקודם שלהם נשמר.${left}`
 }

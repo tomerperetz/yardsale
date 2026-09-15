@@ -609,6 +609,47 @@ describe('suggestForItem', () => {
     expect(await suggestForItem(item.id)).toEqual({ ok: false, reason: 'OUT_OF_CREDIT' })
   })
 
+  it('leaves the card exactly as it was when the call fails', async () => {
+    // The batch pass blanks name and description on failure, which is safe
+    // only because nobody has seen those rows. Here the seller is looking at
+    // the card: silently emptying it would leave them a nameless row and no
+    // explanation, because the screen keeps quiet about a failed suggestion.
+    const item = await draftWithPhoto()
+    const before = await db.item.findUniqueOrThrow({ where: { id: item.id } })
+    captionItem.mockResolvedValue({ ok: false, reason: 'OUT_OF_CREDIT' })
+
+    await suggestForItem(item.id)
+
+    const after = await db.item.findUniqueOrThrow({ where: { id: item.id } })
+    expect(after.name).toBe(before.name)
+    expect(after.description).toBe(before.description)
+  })
+
+  it.each([ItemStatus.AVAILABLE, ItemStatus.RESERVED, ItemStatus.SOLD, ItemStatus.HIDDEN])(
+    'refuses to touch a %s item, without spending a call',
+    async (status) => {
+      // This action overwrites a name, a category and a price. It is only ever
+      // called with a draft the review screen just minted, and the guard is
+      // what keeps it from being pointed at a listing a buyer is reading or an
+      // item an order is holding.
+      const item = await draftWithPhoto()
+      await db.item.update({ where: { id: item.id }, data: { status } })
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      expect(await suggestForItem(item.id)).toEqual({ ok: false, reason: 'FAILED' })
+      expect(captionItem).not.toHaveBeenCalled()
+    },
+  )
+
+  it('stamps the item as written, so the shop-wide rewrite does not buy it again', async () => {
+    const item = await draftWithPhoto()
+
+    await suggestForItem(item.id)
+
+    const saved = await db.item.findUniqueOrThrow({ where: { id: item.id } })
+    expect(saved.descriptionWrittenAt).not.toBeNull()
+  })
+
   it('does not throw when the model call itself throws', async () => {
     const item = await draftWithPhoto()
     captionItem.mockRejectedValue(new Error('socket hang up'))

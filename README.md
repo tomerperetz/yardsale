@@ -158,8 +158,11 @@ import inherited the one before it and nothing ever re-asked. One stale week
 walked forward through every later import until nineteen of twenty live
 listings were telling buyers to collect during a week that had already passed.
 
-For a shop already in that state, `/admin/items` carries a bar that applies
-one window across every item at once. It refuses to move an item a live order
+The shop that was already in that state was repaired by a one-off data
+migration (`20260915100000_sale_window_to_28_sep`), which set the window to
+15–28 September on the deploy that carried it and will never run again. For
+any later drift, `/admin/items` carries a bar that applies one window across
+every item at once. It refuses to move an item a live order
 is holding — that order recorded a pickup date inside the window its buyer was
 shown, and on a confirmed order that buyer has already sent money — and it
 says how many items it will change before it changes them.
@@ -280,11 +283,25 @@ import existed keeps whatever was typed at the time. `/admin/items` carries a
 
 **Descriptions only.** Not the name, not the category, not the price — the
 seller chose those, buyers have seen them, and orders have been placed against
-them. Sold items are left alone: their listing is history and the call costs
-money. It says how many items it will rewrite before it asks, because it is
-the one control in the app that spends credit per row, and it stops the moment
-the account runs dry rather than spending the wait on calls that will each
-fail the same way.
+them.
+
+It is the only control in the app that spends money per row, which is why it
+has three guards rather than a confirmation dialogue:
+
+- **Twelve per press.** A caption call is ten to fifteen seconds; sixty items
+  in one request is minutes, which proxies cut — and the seller then sees "try
+  again" for a call that is still running and still billing. It says how many
+  are left, and pressing again continues rather than repeating.
+- **One at a time.** A second press while the first is still running is
+  refused server-side. The button's own disabled state is client state, and a
+  cut connection clears it while the server is still working.
+- **Never the same item twice.** Every description a model writes — here or on
+  the way in — is stamped, and only unstamped items are offered. A failed call
+  stamps nothing, so it comes back around.
+
+Sold items and open-import drafts are excluded: the first's listing is
+history, and the second was written by this same prompt from these same
+photographs minutes ago.
 
 Nothing is published until the seller says so. Every proposed item is a
 `DRAFT`, and closing the tab loses nothing — the drafts are in

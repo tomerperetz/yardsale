@@ -71,7 +71,7 @@ describe('rewriteDescriptions', () => {
     const item = await itemWithPhoto({ priceAgorot: 12_345 })
     const before = await db.item.findUniqueOrThrow({ where: { id: item.id } })
 
-    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 1, failed: 0, reason: null })
+    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 1, failed: 0, remaining: 0, reason: null })
 
     const after = await db.item.findUniqueOrThrow({ where: { id: item.id } })
     expect(after.description).toBe('תיאור חדש.')
@@ -84,7 +84,7 @@ describe('rewriteDescriptions', () => {
     const sold = await itemWithPhoto({ status: ItemStatus.SOLD })
     const before = await descriptionOf(sold.id)
 
-    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 0, failed: 0, reason: null })
+    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 0, failed: 0, remaining: 0, reason: null })
     expect(await descriptionOf(sold.id)).toBe(before)
     expect(captionItem).not.toHaveBeenCalled()
   })
@@ -99,7 +99,7 @@ describe('rewriteDescriptions', () => {
   it('makes no call for an item with no photograph', async () => {
     await makeItem()
 
-    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 0, failed: 0, reason: null })
+    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 0, failed: 0, remaining: 0, reason: null })
     expect(captionItem).not.toHaveBeenCalled()
   })
 
@@ -113,7 +113,7 @@ describe('rewriteDescriptions', () => {
       value: { headline: 'x', description: '   ', category: '', priceAgorot: 0 },
     })
 
-    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 0, failed: 1, reason: 'FAILED' })
+    expect(await rewriteDescriptions()).toMatchObject({ ok: true, rewritten: 0, failed: 1, reason: 'FAILED' })
     expect(await descriptionOf(item.id)).toBe(before)
   })
 
@@ -122,7 +122,7 @@ describe('rewriteDescriptions', () => {
     const before = await descriptionOf(item.id)
     captionItem.mockResolvedValue({ ok: false, reason: 'FAILED' })
 
-    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 0, failed: 1, reason: 'FAILED' })
+    expect(await rewriteDescriptions()).toMatchObject({ ok: true, rewritten: 0, failed: 1, reason: 'FAILED' })
     expect(await descriptionOf(item.id)).toBe(before)
   })
 
@@ -166,6 +166,87 @@ describe('rewriteDescriptions', () => {
   })
 
   it('does nothing, and says so, on an empty shop', async () => {
-    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 0, failed: 0, reason: null })
+    expect(await rewriteDescriptions()).toEqual({ ok: true, rewritten: 0, failed: 0, remaining: 0, reason: null })
+  })
+
+  it('caps one press at twelve items and says how many are left', async () => {
+    // A caption call is ten to fifteen seconds. Sixty in one server action is
+    // minutes in a single request, which proxies cut — and the seller then
+    // sees "try again" for a call that is still running and still billing.
+    for (let i = 0; i < 15; i++) await itemWithPhoto()
+
+    const result = await rewriteDescriptions()
+
+    expect(result).toMatchObject({ ok: true, rewritten: 12, remaining: 3 })
+    expect(captionItem).toHaveBeenCalledTimes(12)
+  })
+
+  it('continues where it left off when pressed again, instead of buying the same twelve twice', async () => {
+    for (let i = 0; i < 15; i++) await itemWithPhoto()
+
+    await rewriteDescriptions()
+    captionItem.mockClear()
+    const second = await rewriteDescriptions()
+
+    expect(second).toMatchObject({ ok: true, rewritten: 3, remaining: 0 })
+    expect(captionItem).toHaveBeenCalledTimes(3)
+  })
+
+  it('never offers an item a model has already written', async () => {
+    const item = await itemWithPhoto()
+    await rewriteDescriptions()
+
+    expect(await rewriteCounts()).toMatchObject({ rewritable: 0 })
+    captionItem.mockClear()
+    expect(await rewriteDescriptions()).toMatchObject({ rewritten: 0, remaining: 0 })
+    expect(captionItem).not.toHaveBeenCalled()
+    expect((await db.item.findUniqueOrThrow({ where: { id: item.id } })).descriptionWrittenAt).not.toBeNull()
+  })
+
+  it('offers an item again when the call failed — nothing was written, nothing was stamped', async () => {
+    await itemWithPhoto()
+    captionItem.mockResolvedValue({ ok: false, reason: 'FAILED' })
+    await rewriteDescriptions()
+
+    expect(await rewriteCounts()).toMatchObject({ rewritable: 1 })
+  })
+
+  it('never touches a DRAFT — the import just wrote it, from the same prompt and the same photos', async () => {
+    // Otherwise a seller who imports 40 photos and then presses this pays for
+    // 40 more calls, and the review screen writes its own state back over the
+    // result on publish, so the money buys nothing at all.
+    await itemWithPhoto({ status: ItemStatus.DRAFT })
+
+    expect(await rewriteCounts()).toMatchObject({ rewritable: 0 })
+    expect(await rewriteDescriptions()).toMatchObject({ rewritten: 0 })
+    expect(captionItem).not.toHaveBeenCalled()
+  })
+
+  it('refuses a second press while the first is still running', async () => {
+    // The button's `busy` flag is client state, and a proxy that cuts the
+    // first request clears it while the server is still billing. Pressing
+    // again must not start a second pass over the same items.
+    await itemWithPhoto()
+    let release = () => {}
+    captionItem.mockImplementation(
+      () => new Promise((resolve) => { release = () => resolve({ ok: false, reason: 'FAILED' }) }),
+    )
+
+    const first = rewriteDescriptions()
+    // Let the first call reach the model before pressing again.
+    await new Promise((r) => setTimeout(r, 20))
+    const second = await rewriteDescriptions()
+
+    expect(second.ok).toBe(false)
+    release()
+    await first
+  })
+
+  it('accepts a press again once the previous one has finished', async () => {
+    await itemWithPhoto()
+    await rewriteDescriptions()
+    await itemWithPhoto()
+
+    expect(await rewriteDescriptions()).toMatchObject({ ok: true, rewritten: 1 })
   })
 })

@@ -266,33 +266,55 @@ async function captionOne(
     // description. The placeholder is cleared deliberately — the model was
     // asked and had nothing, and an item cannot be published without a name,
     // so the seller is sent to the one field they must fill in themselves.
+    //
+    // This is right for the batch pass and wrong everywhere else: it is only
+    // safe because nobody has seen these rows yet. `suggestForItem` takes the
+    // other branch — see `applyCaption`, which it calls directly.
     await db.item.update({ where: { id: item.id }, data: { name: '', description: '' } })
     return caption.reason
   }
 
+  await applyCaption(item.id, caption.value, idByName)
+  return null
+}
+
+/**
+ * Writes one caption onto one item — the success half of `captionOne`, shared
+ * with `suggestForItem` so that a card the seller split mid-review is filled
+ * in by exactly the rule that filled in its neighbours.
+ *
+ * Only the success half. The failure half blanks the name and description,
+ * which is correct for a row nobody has seen and destructive for one the
+ * seller is looking at.
+ */
+async function applyCaption(itemId: string, caption: Caption, idByName: Map<string, string>): Promise<void> {
   // One of the seller's own names, a new one the model proposed, or '' when it
   // could not tell (spec §3.5). An empty one leaves the carried-forward
   // default in place; a proposal is created now so the item has a real
   // category, and the review screen flags it as new before the seller accepts.
-  const categoryId = caption.value.category === ''
+  const categoryId = caption.category === ''
     ? undefined
-    : (idByName.get(caption.value.category) ?? (await createProposedCategory(caption.value.category)))
+    : (idByName.get(caption.category) ?? (await createProposedCategory(caption.category)))
 
   await db.item.update({
-    where: { id: item.id },
+    where: { id: itemId },
     data: {
-      name: caption.value.headline,
-      description: caption.value.description,
+      name: caption.headline,
+      description: caption.description,
       ...(categoryId ? { categoryId } : {}),
       // 0 means the model would not price it, and 0 is also what the draft
       // already holds — so writing it either way changes nothing and needs no
       // branch. A suggestion arrives on the seller's own ₪50 grid and still
       // has to be confirmed: the review screen says the prices are suggested,
       // and the seller edits the ones that are wrong before publishing.
-      priceAgorot: caption.value.priceAgorot,
+      priceAgorot: caption.priceAgorot,
+      // Stamped so the shop-wide rewrite (src/lib/import/rewrite.ts) knows a
+      // model has already written this one. Without it, an item imported this
+      // morning is offered up to be described again this afternoon, from the
+      // same photographs and the same prompt, for the same money.
+      descriptionWrittenAt: new Date(),
     },
   })
-  return null
 }
 
 /** What the seller sees filled in on a card the model just wrote. */
@@ -323,35 +345,62 @@ export type SuggestResult = { ok: true; suggestion: Suggestion } | { ok: false; 
  * card.
  *
  * Never throws, like everything else on this path: a failure leaves the card
- * for the seller to fill in and says which failure it was.
+ * exactly as it was — name, description and all — and says which failure it
+ * was. That is the one place this differs from the batch pass, which blanks
+ * both fields on failure; see the comment in `captionOne`.
  */
 export async function suggestForItem(itemId: string): Promise<SuggestResult> {
   if (!aiEnabled()) return { ok: false, reason: 'NO_KEY' }
 
   const item = await db.item.findUnique({
     where: { id: itemId },
-    select: { id: true, photos: { orderBy: { position: 'asc' }, select: { id: true } } },
+    select: { id: true, status: true, photos: { orderBy: { position: 'asc' }, select: { id: true } } },
   })
+  if (!item) return { ok: false, reason: 'FAILED' }
+
+  // A DRAFT and nothing else. This is called with an id the review screen just
+  // minted, so the guard never fires in normal use — which is the point: it is
+  // what keeps a server action that overwrites an item's name, category and
+  // price from being pointable at a listing a buyer is reading, or at one an
+  // order is holding, by anything that can reach /admin.
+  if (item.status !== ItemStatus.DRAFT) {
+    console.error('[import] refusing to suggest details for', itemId, '— it is', item.status, 'not a draft')
+    return { ok: false, reason: 'FAILED' }
+  }
+
   // No photographs is not a failure of the model — there was nothing to show
   // it — but it reaches the seller as the same "fill this in yourself".
-  if (!item || item.photos.length === 0) return { ok: false, reason: 'FAILED' }
+  if (item.photos.length === 0) return { ok: false, reason: 'FAILED' }
 
   const photoIds = item.photos.map((photo) => photo.id)
   const [bytes, categories] = await Promise.all([
     readPhotoBytes(photoIds),
     db.category.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
   ])
+  const images = photoIds.map((id) => bytes.get(id)).filter((webp): webp is Buffer => webp !== undefined)
+  if (images.length === 0) return { ok: false, reason: 'FAILED' }
 
-  const failure = await captionOne(
-    { id: item.id, photoIds },
-    bytes,
+  const caption = await captionItem(
+    images,
     categories.map((category) => category.name),
-    new Map(categories.map((category) => [category.name, category.id])),
-  ).catch((err) => {
-    console.error('[import] suggesting details for item', itemId, 'failed:', err)
-    return 'FAILED' as const
+  ).catch((err): AiResult<Caption> => {
+    console.error('[import] the caption call for item', itemId, 'threw:', err)
+    return { ok: false, reason: 'FAILED' }
   })
-  if (failure) return { ok: false, reason: failure }
+
+  // The row is left exactly as it was. `captionOne` blanks the name and
+  // description here instead, which is right for a batch nobody has looked at
+  // and wrong for this: the seller is watching this card, and a failed
+  // suggestion that silently emptied it would leave them a nameless row with
+  // no explanation for it.
+  if (!caption.ok) return { ok: false, reason: caption.reason }
+
+  try {
+    await applyCaption(item.id, caption.value, new Map(categories.map((c) => [c.name, c.id])))
+  } catch (err) {
+    console.error('[import] storing the suggestion for item', itemId, 'failed:', err)
+    return { ok: false, reason: 'FAILED' }
+  }
 
   const saved = await db.item.findUnique({
     where: { id: itemId },

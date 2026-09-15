@@ -20,6 +20,11 @@ model Item {
   status        ItemStatus  @default(DRAFT)
   sortIndex     Int         @default(0)
   importBatchId String? // the drop this item was created from; null for hand-made items
+  // When a model last wrote this item's description, or null for one no model
+  // has written. Not `updatedAt`, which any edit bumps: this exists so that
+  // the shop-wide rewrite can tell what it has already paid for. Without it a
+  // seller who presses the button twice buys the same descriptions twice.
+  descriptionWrittenAt DateTime?
   photos        Photo[]
   orderItems    OrderItem[]
   createdAt     DateTime    @default(now())
