@@ -165,6 +165,11 @@ export default async function ImportReviewPage({
                 loosePhotos={loosePhotos}
                 notice={notice}
                 defaults={defaults}
+                // Read off the rows, not off the fields on screen: a caption
+                // pass that ran out of credit leaves every price at 0, and the
+                // seller typing one of their own must not make the review
+                // screen claim a model suggested it.
+                pricesSuggested={items.some((item) => item.priceAgorot > 0)}
               />
             </section>
           </main>

@@ -72,15 +72,17 @@ const REWRITABLE: Prisma.ItemWhereInput = {
   descriptionWrittenAt: null,
 }
 
-export type RewriteCounts = { rewritable: number; skipped: number }
-
 /**
- * How many items a rewrite would still touch, and how many it would pass over
- * — so the screen can say what a press costs before the seller spends it.
+ * How many items a rewrite would still touch — so the screen can say what a
+ * press costs before the seller spends it.
+ *
+ * One number, not two. It also reported how many it would pass over, which
+ * nothing rendered and which cost a second `count()` on every /admin/items
+ * request: the screen says what is excluded in words ("sold items, drafts,
+ * items with no photographs"), which is the part a seller can act on.
  */
-export async function rewriteCounts(): Promise<RewriteCounts> {
-  const [total, rewritable] = await Promise.all([db.item.count(), db.item.count({ where: REWRITABLE })])
-  return { rewritable, skipped: total - rewritable }
+export async function rewriteCount(): Promise<number> {
+  return db.item.count({ where: REWRITABLE })
 }
 
 export type RewriteResult =

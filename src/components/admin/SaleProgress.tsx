@@ -39,7 +39,7 @@ export function SaleProgress({ progress }: { progress: Progress }) {
           detail={`${progress.itemsSold} מתוך ${progress.itemsTotal}`}
         />
         <Bar
-          label="כסף שנכנס"
+          label="כסף מהמכירות"
           pct={moneyPct}
           detail={
             <>
@@ -48,6 +48,20 @@ export function SaleProgress({ progress }: { progress: Progress }) {
           }
         />
       </div>
+
+      {/*
+        Both sides of that bar are the items' own listed prices, and the label
+        would otherwise be a claim about cash. A chair listed at ₪300 and
+        haggled down to ₪200 at the door still counts ₪300 here — the shop has
+        no record of what was actually handed over, and `OrderItem.priceAgorot`
+        only covers items that sold through the shop rather than to the
+        neighbour who turned up with cash. Saying so is cheaper than pretending
+        otherwise, and the ratio is still the right answer to "how much of what
+        I put out has gone".
+      */}
+      <p className={styles.footnote}>
+        מחושב לפי מחירי הפריטים, לא לפי הסכום שנגבה בפועל. טיוטות ופריטים מוסתרים לא נכללים.
+      </p>
     </section>
   )
 }

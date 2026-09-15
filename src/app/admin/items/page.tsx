@@ -5,7 +5,7 @@ import { getSettings } from '@/lib/settings'
 import { saleWindowEnded, saleWindowInputs } from '@/lib/sale-window'
 import { pickupWindowCounts } from '@/lib/admin/items'
 import { saleProgress } from '@/lib/admin/sale-progress'
-import { rewriteCounts } from '@/lib/import/rewrite'
+import { rewriteCount } from '@/lib/import/rewrite'
 import { aiEnabled } from '@/lib/ai/client'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { photoUrl } from '@/lib/photo-url'
@@ -81,7 +81,7 @@ export default async function AdminItemsPage() {
     db.order.count({ where: { status: OrderStatus.CLAIMED_PAID } }),
     pickupWindowCounts(),
     saleProgress(),
-    rewriteCounts(),
+    rewriteCount(),
   ])
 
   const initialCategory = lastItem?.category.name ?? categories[0]?.name ?? ''
@@ -173,7 +173,7 @@ export default async function AdminItemsPage() {
                   window, applied across the shop. Hidden when there is nothing
                   to apply it to — on an empty shop the only thing worth saying
                   about the window is in Settings. */}
-              {items.length > 0 && <DescriptionsBulk rewritable={describable.rewritable} aiOn={aiImport} />}
+              {items.length > 0 && <DescriptionsBulk rewritable={describable} aiOn={aiImport} />}
               {items.length > 0 && (
                 <PickupWindowBulk
                   movable={windowCounts.movable}

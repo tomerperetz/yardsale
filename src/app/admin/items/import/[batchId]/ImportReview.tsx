@@ -69,6 +69,7 @@ export function ImportReview({
   loosePhotos,
   notice,
   defaults,
+  pricesSuggested,
 }: {
   batchId: string
   items: ReviewItem[]
@@ -78,6 +79,13 @@ export function ImportReview({
   loosePhotos: ReviewPhoto[]
   notice: ImportNotice
   defaults: ReviewDefaults
+  /**
+   * Whether the model priced anything in this batch, read off the rows as the
+   * page loaded. Not "does any field hold a number" — the seller typing their
+   * own price into an unpriced batch must not make the banner claim a model
+   * suggested it.
+   */
+  pricesSuggested: boolean
 }) {
   const categoryListId = useId()
 
@@ -174,18 +182,11 @@ export function ImportReview({
     [items, selected],
   )
 
-  /**
-   * One card's fields. Marks the card unsaved, because that is what a keystroke
-   * in it means — except for `{ dirty: false }`, which is how `suggest` writes
-   * back values the server has already stored: an "unsaved" dot on those would
-   * send the seller to press save for a write that has happened.
-   */
-  function editItem(id: string, patch: Partial<ReviewItem>, options: { dirty?: boolean } = {}) {
+  /** One card's fields, and the card is unsaved — that is what a keystroke means. */
+  function editItem(id: string, patch: Partial<ReviewItem>) {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
-    if (options.dirty !== false) {
-      setDirty((prev) => new Set(prev).add(id))
-      typedInto.current.add(id)
-    }
+    setDirty((prev) => new Set(prev).add(id))
+    typedInto.current.add(id)
   }
 
   function clearDirty(ids: Iterable<string>) {
@@ -521,10 +522,15 @@ export function ImportReview({
       // the row already holds the suggestion, so pressing save is what they
       // meant either way.
       if (typedInto.current.has(itemId)) return
-      // Written straight over the placeholder, and NOT marked dirty: the
-      // server has already stored exactly these values, so a "save" here would
-      // write back what is already there and a "unsaved" dot would be a lie.
-      editItem(itemId, result.suggestion, { dirty: false })
+      // Straight over the placeholder. The card stays marked unsaved, which it
+      // already was from the moment `handleMove` minted it — there is nothing
+      // to undo there, and a card the seller has not looked at yet is exactly
+      // what "unsaved" is for.
+      //
+      // `typedInto` is cleared last, so applying the suggestion does not
+      // itself count as the seller having typed into the card.
+      editItem(itemId, result.suggestion)
+      typedInto.current.delete(itemId)
     } catch (err) {
       console.error('[import] suggesting details for the new item failed:', err)
     } finally {
@@ -580,13 +586,18 @@ export function ImportReview({
         </div>
       )}
 
-      {/* Said once, here, rather than under twenty price fields. It appears
-          exactly when there is something to warn about — a price the seller
-          did not type — and it matters because the prices arrive already
-          filled in: without this line, publishing the batch is the same click
-          whether they read the numbers or not, and the numbers are a guess a
-          model made from a photograph. */}
-      {items.some((item) => item.price !== '') && (
+      {/* Said once, here, rather than under twenty price fields, and only when
+          the model actually priced something — which is why the flag comes
+          from the server's view of the batch at load rather than from whether
+          any field on screen holds a number. After a caption pass that ran out
+          of credit every price is empty, and the seller typing one of their
+          own must not make this claim about it.
+
+          It matters because the prices arrive already filled in: without this
+          line, publishing the batch is the same click whether they read the
+          numbers or not, and the numbers are a guess a model made from a
+          photograph. */}
+      {pricesSuggested && (
         <div className={styles.notice}>
           <p>המחירים הם הצעה אוטומטית לפי התמונות, מעוגלת ל־50 ₪. עברו עליהם לפני הפרסום.</p>
         </div>

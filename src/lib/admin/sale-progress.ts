@@ -13,12 +13,19 @@ import { db } from '@/lib/db'
  * and is not part of what today's sale can earn. What is left — AVAILABLE,
  * RESERVED, SOLD — is exactly the inventory a buyer could put money on.
  *
- * Both sides of the money bar are the ITEM's own price, not the order's. The
- * order records what was actually charged and would be the right number for
- * accounting; this is not accounting. It is "how much of what I put out has
- * turned into money", and asking that question with two different prices on
- * the two sides of the fraction would let the bar exceed 100% after a price
- * change.
+ * Both sides of the money bar are the ITEM's own price, not the order's, and
+ * the screen says so out loud rather than calling it cash received. Three
+ * reasons it cannot be the order's:
+ *
+ *   - Most of this shop's sales are the neighbour who turns up and pays cash;
+ *     the seller marks the item SOLD by hand and no order exists at all.
+ *   - `OrderItem.priceAgorot` is a snapshot of what was charged, which is the
+ *     right number for accounting. This is not accounting.
+ *   - Two different prices on the two sides of one fraction would let the bar
+ *     pass 100% after a price change.
+ *
+ * What it does answer is "how much of what I put out has gone", which is the
+ * question the seller asked for. `SaleProgress` carries the qualifier.
  */
 
 /** The inventory this sale consists of. Drafts are not for sale; hidden items are not for sale today. */

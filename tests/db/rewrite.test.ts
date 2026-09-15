@@ -19,7 +19,7 @@ vi.mock('@/lib/ai/client', () => ({ captionItem, aiEnabled, clusterPhotos: vi.fn
 
 import { db } from '@/lib/db'
 import { photoDir, photoFilename } from '@/lib/images'
-import { rewriteDescriptions, rewriteCounts } from '@/lib/import/rewrite'
+import { rewriteDescriptions, rewriteCount } from '@/lib/import/rewrite'
 import { resetDb } from '../helpers/db'
 import { makeItem } from '../helpers/factories'
 
@@ -54,13 +54,14 @@ async function itemWithPhoto(overrides: Parameters<typeof makeItem>[0] = {}) {
 
 const descriptionOf = async (id: string) => (await db.item.findUniqueOrThrow({ where: { id } })).description
 
-describe('rewriteCounts', () => {
-  it('counts what a rewrite would touch, and what it would pass over', async () => {
+describe('rewriteCount', () => {
+  it('counts what a rewrite would touch, and nothing it would not', async () => {
     await itemWithPhoto()
     await itemWithPhoto({ status: ItemStatus.SOLD })
+    await itemWithPhoto({ status: ItemStatus.DRAFT })
     await makeItem() // no photograph: nothing to show the model
 
-    expect(await rewriteCounts()).toEqual({ rewritable: 1, skipped: 2 })
+    expect(await rewriteCount()).toBe(1)
   })
 })
 
@@ -196,7 +197,7 @@ describe('rewriteDescriptions', () => {
     const item = await itemWithPhoto()
     await rewriteDescriptions()
 
-    expect(await rewriteCounts()).toMatchObject({ rewritable: 0 })
+    expect(await rewriteCount()).toBe(0)
     captionItem.mockClear()
     expect(await rewriteDescriptions()).toMatchObject({ rewritten: 0, remaining: 0 })
     expect(captionItem).not.toHaveBeenCalled()
@@ -208,7 +209,7 @@ describe('rewriteDescriptions', () => {
     captionItem.mockResolvedValue({ ok: false, reason: 'FAILED' })
     await rewriteDescriptions()
 
-    expect(await rewriteCounts()).toMatchObject({ rewritable: 1 })
+    expect(await rewriteCount()).toBe(1)
   })
 
   it('never touches a DRAFT — the import just wrote it, from the same prompt and the same photos', async () => {
@@ -217,7 +218,7 @@ describe('rewriteDescriptions', () => {
     // result on publish, so the money buys nothing at all.
     await itemWithPhoto({ status: ItemStatus.DRAFT })
 
-    expect(await rewriteCounts()).toMatchObject({ rewritable: 0 })
+    expect(await rewriteCount()).toBe(0)
     expect(await rewriteDescriptions()).toMatchObject({ rewritten: 0 })
     expect(captionItem).not.toHaveBeenCalled()
   })

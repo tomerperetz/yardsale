@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { ItemStatus } from '@prisma/client'
 import { notFound } from 'next/navigation'
 import { getPublicItem } from '@/lib/items'
 import { formatAgorot } from '@/lib/money'
@@ -14,10 +15,15 @@ import { ItemDetail } from '@/components/ItemDetail'
  * photograph, its name, and the price — which is the question every buyer
  * opens the link to answer, and the one thing a shared link never used to say.
  *
- * A sold or hidden item resolves to nothing here for the same reason the page
- * 404s: `getPublicItem` applies the public filter, so a link to something that
- * has gone previews as a plain link rather than advertising an item that is
- * no longer for sale.
+ * A SOLD item still has a page — this shop keeps sold items in the grid,
+ * dimmed, because a yard sale reads better when you can see what went (spec
+ * §7) — so it still gets a card here. It says נמכר and drops the price. A link
+ * forwarded into a group two hours after the sofa went would otherwise preview
+ * as "ספה — ₪450" with a photograph, which is an advertisement for something
+ * nobody can have, and the price is the half a buyer acts on.
+ *
+ * A DRAFT or HIDDEN item is not public at all: `getPublicItem` filters it out,
+ * the page 404s, and this returns nothing, so the link previews bare.
  */
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
@@ -25,13 +31,19 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!item) return {}
 
   const cover = item.photos[0] ?? null
+  const sold = item.status === ItemStatus.SOLD
+  const price = formatAgorot(item.priceAgorot)
 
   return shareCard({
-    title: `${item.name} — ${formatAgorot(item.priceAgorot)}`,
+    title: sold ? `${item.name} — נמכר` : `${item.name} — ${price}`,
     // The seller's own description, and the category behind it when there is
     // no description yet — never a generated sentence about an item nobody has
     // described, which is how a preview ends up claiming something untrue.
-    description: item.description.trim() !== '' ? item.description : `${item.category.name} · ${formatAgorot(item.priceAgorot)}`,
+    description: sold
+      ? `הפריט הזה כבר נמכר. יש עוד דברים בחנות.`
+      : item.description.trim() !== ''
+        ? item.description
+        : `${item.category.name} · ${price}`,
     photo: cover && { id: cover.id, width: cover.width, height: cover.height },
     path: `/item/${item.slug}`,
     // The shop's name, not the item's: og:site_name is what a preview prints
