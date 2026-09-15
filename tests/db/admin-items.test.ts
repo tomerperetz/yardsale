@@ -156,7 +156,35 @@ describe('deleteItem', () => {
     const item = await makeItem({ status: ItemStatus.RESERVED })
     await makeOrder([item.id])
 
-    expect(await deleteItem(item.id)).toEqual({ ok: false, error: 'אי אפשר למחוק פריט ששייך להזמנה.' })
+    expect(await deleteItem(item.id)).toEqual({
+      ok: false,
+      error: 'אי אפשר למחוק פריט ששייך להזמנה. בטלו את ההזמנה קודם.',
+    })
+    expect(await db.item.findUnique({ where: { id: item.id } })).not.toBeNull()
+  })
+
+  // An order is now the ONLY thing that stops a delete. The status used to be
+  // checked as well, which made a duplicate impossible to remove: listed twice
+  // by mistake and marked sold or reserved by hand, no order ever involved,
+  // and no way out — not even by changing the status first, because the
+  // status was what the refusal was reading.
+  it.each([ItemStatus.SOLD, ItemStatus.RESERVED, ItemStatus.HIDDEN, ItemStatus.AVAILABLE, ItemStatus.DRAFT])(
+    'deletes a %s item that no order has ever touched',
+    async (status) => {
+      const item = await makeItem({ status })
+
+      expect(await deleteItem(item.id)).toEqual({ ok: true })
+      expect(await db.item.findUnique({ where: { id: item.id } })).toBeNull()
+    },
+  )
+
+  it('still refuses when the order that touched it was cancelled — the order lists it', async () => {
+    // Not a live claim, but the order is a record of what was in it, and
+    // OrderItem points at this row.
+    const item = await makeItem({ status: ItemStatus.AVAILABLE })
+    await makeOrder([item.id], { status: OrderStatus.CANCELLED })
+
+    expect(await deleteItem(item.id)).toMatchObject({ ok: false })
     expect(await db.item.findUnique({ where: { id: item.id } })).not.toBeNull()
   })
 })

@@ -346,12 +346,23 @@ export async function deleteItem(id: string): Promise<DeleteResult> {
   const result = await db.$transaction(async (tx) => {
     const item = await tx.item.findUnique({
       where: { id },
-      select: { status: true, orderItems: { select: { id: true }, take: 1 } },
+      select: { orderItems: { select: { id: true }, take: 1 } },
     })
     if (!item) return { ok: false as const, error: 'הפריט לא נמצא.' }
 
-    if (item.status === ItemStatus.RESERVED || item.status === ItemStatus.SOLD || item.orderItems.length > 0) {
-      return { ok: false as const, error: 'אי אפשר למחוק פריט ששייך להזמנה.' }
+    // An order is the only thing that makes an item undeletable, and it is
+    // enough on its own: OrderItem points at this row, and that order is a
+    // record of money — deleting the item would either break the foreign key
+    // or leave an order listing something that no longer exists.
+    //
+    // The status used to be checked too, refusing every RESERVED and every
+    // SOLD item outright. That was wrong in the one case the seller keeps
+    // hitting: a duplicate listed twice by mistake and marked sold, or
+    // reserved by hand, which no order has ever touched. There was no way to
+    // remove it at all — not even by changing its status first, because the
+    // status was what the refusal was reading.
+    if (item.orderItems.length > 0) {
+      return { ok: false as const, error: 'אי אפשר למחוק פריט ששייך להזמנה. בטלו את ההזמנה קודם.' }
     }
 
     // Read the ids before the rows go: files are keyed by photo, so once

@@ -13,6 +13,7 @@ import { BulkQueue } from '@/components/admin/BulkQueue'
 import { ImportDrop } from '@/app/admin/items/import/ImportDrop'
 import { PickupWindowBulk } from './PickupWindowBulk'
 import { DescriptionsBulk } from './DescriptionsBulk'
+import { ItemStatusCell } from './ItemStatusCell'
 import { SaleProgress } from '@/components/admin/SaleProgress'
 import { PickupWindow } from '@/components/PickupWindow'
 import { Price } from '@/components/Price'
@@ -20,21 +21,6 @@ import { AdminNav } from '@/components/admin/AdminNav'
 import { FirstRunChecklist } from '@/components/admin/FirstRunChecklist'
 import adminStyles from '@/components/admin/admin.module.css'
 import styles from './items.module.css'
-
-const STATUS_LABEL: Record<string, string> = {
-  AVAILABLE: 'זמין',
-  RESERVED: 'שמור',
-  SOLD: 'נמכר',
-  DRAFT: 'טיוטה',
-  HIDDEN: 'מוסתר',
-}
-const STATUS_CLASS: Record<string, string> = {
-  AVAILABLE: 'ok',
-  RESERVED: 'hold',
-  SOLD: 'sold',
-  DRAFT: 'draft',
-  HIDDEN: 'hidden',
-}
 
 /**
  * The seller's item-entry screen: one drop zone for photos, plus the item
@@ -234,9 +220,11 @@ export default async function AdminItemsPage() {
                               {item.status === 'SOLD' ? '—' : <PickupWindow from={item.pickupFrom} to={item.pickupTo} />}
                             </td>
                             <td data-label="סטטוס">
-                              <span className={`${styles.pill} ${styles[STATUS_CLASS[item.status]]}`}>
-                                {STATUS_LABEL[item.status]}
-                              </span>
+                              {/* The chip is the control: it used to be a
+                                  label, and changing a status meant opening
+                                  the item's own screen — twelve screens to
+                                  reserve twelve things. */}
+                              <ItemStatusCell id={item.id} status={item.status} name={item.name} />
                             </td>
                             <td>
                               <Link href={`/admin/items/${item.id}`} className={styles.rowbtn}>

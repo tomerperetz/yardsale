@@ -248,8 +248,19 @@ from under an order counting on it:
   those are yours to move again.
 
 Marking sold by hand is for the neighbour who turns up and pays cash. Hiding is
-for "not today". Deleting is still there for removing an item outright, and is
-refused for anything attached to an order.
+for "not today". Reserving is for "someone messaged saying they'll come Friday
+for it".
+
+**All of it happens from the status chip in the item table.** The chip is a
+control, not a label: press it and it offers the four statuses and a delete.
+That includes changing the status of an item already marked sold, which is the
+common case — a sale that fell through, or a duplicate.
+
+**Deleting is refused for one reason only: an order lists the item.** The
+status has nothing to do with it. That used to be checked too, and it made a
+duplicate impossible to remove — listed twice by mistake and marked sold, no
+order ever involved, and no way out, not even by changing the status first,
+because the status was what the refusal was reading.
 
 ## A note on photos and HEIC
 

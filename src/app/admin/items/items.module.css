@@ -411,3 +411,128 @@
     width: 100%;
   }
 }
+
+/* ── the status chip, which is a control ─────────────────────
+   Anchored so its menu opens against the chip rather than the table cell,
+   which on a phone is the full card width. */
+.statusCell {
+  position: relative;
+  display: inline-block;
+}
+
+.pillBtn {
+  border: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  /* The chip itself stays chip-sized; the tap target is grown outwards so it
+     clears 44px without the row growing with it. */
+  position: relative;
+}
+.pillBtn::after {
+  content: '';
+  position: absolute;
+  inset: -11px -8px;
+}
+.caret {
+  margin-inline-start: 5px;
+  font-size: 10px;
+  opacity: 0.65;
+}
+
+/* Fixed, not absolute: the table lives in an `overflow-x: auto` wrapper, and
+   an overflow container clips its descendants in BOTH axes — the menu on the
+   last row was sliced off halfway down. The coordinates come from the chip's
+   own rect, measured when it opens. */
+.statusMenu {
+  position: fixed;
+  z-index: 40;
+  min-width: 168px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow: 0 12px 30px rgba(27, 25, 23, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menuItem,
+.menuDanger {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  text-align: start;
+  padding: 10px 11px;
+  border-radius: 9px;
+  cursor: pointer;
+  color: var(--ink-2);
+  /* A real tap target on a phone. */
+  min-height: 44px;
+}
+.menuItem:hover:not(:disabled),
+.menuDanger:hover:not(:disabled) {
+  background: #faf8f6;
+}
+.menuItem:disabled,
+.menuDanger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.menuOn {
+  background: var(--ink);
+  color: #fff;
+  font-weight: 600;
+}
+.menuOn:hover:not(:disabled) {
+  background: var(--ink);
+}
+.menuDanger {
+  color: #9b3a20;
+  font-weight: 600;
+}
+
+.menuSep {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 2px;
+}
+
+.menuNote {
+  margin: 0;
+  padding: 7px 11px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+
+/* Transparent, full-screen, behind the menu: one click anywhere dismisses it.
+   A real button so the keyboard can reach it too. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.statusErr {
+  position: absolute;
+  inset-block-start: calc(100% + 6px);
+  inset-inline-start: 0;
+  z-index: 19;
+  min-width: 190px;
+  margin: 0;
+  background: var(--accent-soft);
+  color: #9b3a20;
+  border-radius: 11px;
+  padding: 8px 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
