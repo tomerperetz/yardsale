@@ -124,9 +124,14 @@ function toolInput(message: Anthropic.Message, name: string): unknown {
 }
 
 /**
- * Which of the three failures an SDK error is. Spec §7.4: credit exhaustion
- * is its own outcome, because it is latched for the batch while a network
- * error is not.
+ * Which failure an SDK error is. Spec §7.4: credit exhaustion is its own
+ * outcome, because it is latched for the batch while a network error is not.
+ *
+ * Everything reaching here is a call that never completed, so nothing here
+ * returns `FAILED` — that arm means the model answered and the answer was
+ * unusable, which is a statement about the item. A 529 is not. See
+ * `AiFailure`: `rewriteDescriptions` retires an item after two of its own
+ * failures, and counting an outage there would retire the whole shop.
  *
  * Duck-typed on `status` rather than `instanceof Anthropic.APIError`, so that
  * a test can express an error shape without constructing SDK internals — the
@@ -147,7 +152,7 @@ function classify(err: unknown): AiFailure {
   if (status === 400 && (text.includes('credit') || text.includes('quota') || text.includes('billing'))) {
     return 'OUT_OF_CREDIT'
   }
-  return 'FAILED'
+  return 'UNAVAILABLE'
 }
 
 /**

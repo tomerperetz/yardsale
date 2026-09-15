@@ -146,5 +146,11 @@ function doneMessage(rewritten: number, failed: number, remaining: number, reaso
   if (reason === 'OUT_OF_CREDIT') {
     return `${done} השאר נעצרו: אין יתרה בחשבון הבינה המלאכותית.${left}`
   }
+  // An outage is worth its own sentence, and worth NOT ending in "press again
+  // to continue": pressing again during one achieves nothing, and the items it
+  // touched were not counted against, so nothing was lost by waiting.
+  if (reason === 'UNAVAILABLE') {
+    return `${done} השירות לא זמין כרגע. נסו שוב בעוד כמה דקות — שום פריט לא נפסל בגלל זה.`
+  }
   return `${done} ${itemCount(failed)} לא השתנו והתיאור הקודם שלהם נשמר.${left}`
 }

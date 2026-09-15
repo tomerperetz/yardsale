@@ -154,12 +154,16 @@ async function run(): Promise<RewriteResult> {
       if (outcome === null) rewritten++
       else {
         failed++
-        // The first failure names the batch. OUT_OF_CREDIT outranks it: it is
-        // the one the seller has to act on, and it is why the rest stopped.
-        if (reason === null || outcome === 'OUT_OF_CREDIT') reason = outcome
+        // The first failure names the batch, except that the two the seller
+        // has to act on outrank it — they are the ones that explain why the
+        // rest stopped, and the ones with something to do about them.
+        if (reason === null || outcome === 'OUT_OF_CREDIT' || outcome === 'UNAVAILABLE') reason = outcome
       }
     }
-    if (reason === 'OUT_OF_CREDIT') break
+    // Both mean the next twelve calls fail the same way: no credit, or a
+    // service that is not answering. Spending the seller's wait on them tells
+    // them nothing the first one did not.
+    if (reason === 'OUT_OF_CREDIT' || reason === 'UNAVAILABLE') break
   }
 
   // Counted after the writes, so it is what is actually left rather than what
@@ -183,13 +187,14 @@ async function rewriteOne(itemId: string, photoIds: string[], categories: string
     return { ok: false, reason: 'FAILED' }
   })
 
-  if (!caption.ok) {
-    // Running out of credit is the one failure that says nothing about this
-    // item. The seller tops up and presses again; burning an attempt for it
-    // would quietly retire items the model never even saw.
-    if (caption.reason === 'OUT_OF_CREDIT') return 'OUT_OF_CREDIT'
-    return await failed(itemId)
-  }
+  // Nothing here is about the item, so nothing here counts against it. A call
+  // that never completed — a 529, a reset connection, a key pulled mid-run —
+  // says only that the service was not there. Counting those would let twenty
+  // minutes of upstream trouble retire every item in the shop from the one
+  // feature that exists for them, permanently: nothing in the app resets an
+  // attempt count, and only a success clears it.
+  if (!caption.ok && caption.reason !== 'FAILED') return caption.reason
+  if (!caption.ok) return await failed(itemId)
 
   const description = caption.value.description.trim()
   // An empty answer is not an improvement. The item keeps the description it
@@ -206,6 +211,10 @@ async function rewriteOne(itemId: string, photoIds: string[], categories: string
 
 /**
  * Records one spent attempt and reports the failure.
+ *
+ * Only for a failure that is ABOUT this item: the model answered and the
+ * answer was unusable, or there is nothing on disk to show it. A call that
+ * never completed returns without coming here — see `rewriteOne`.
  *
  * Its own function because the increment is the easy half to forget, and
  * forgetting it on any one path puts that path back in the loop this cap

@@ -302,6 +302,35 @@ describe('rewriteDescriptions', () => {
     expect(await rewriteCount()).toBe(0)
   })
 
+  it.each(['UNAVAILABLE', 'NO_KEY'] as const)(
+    'never burns an attempt on %s — the call never reached the model',
+    async (reason) => {
+      // The inverse risk of the cap, and the worse one. Twenty minutes of
+      // Anthropic 529s, a seller who presses through it because the screen
+      // said "press again", and every item is retired at two attempts — from
+      // the one feature that exists for them, permanently, because nothing in
+      // the app resets the counter and only a success clears it.
+      await itemWithPhoto()
+      captionItem.mockResolvedValue({ ok: false, reason })
+
+      await rewriteDescriptions()
+      await rewriteDescriptions()
+      await rewriteDescriptions()
+
+      expect(await rewriteCount()).toBe(1)
+    },
+  )
+
+  it('stops the batch on an outage rather than hammering a service that is not there', async () => {
+    for (let i = 0; i < 9; i++) await itemWithPhoto()
+    captionItem.mockResolvedValue({ ok: false, reason: 'UNAVAILABLE' })
+
+    const result = await rewriteDescriptions()
+
+    expect(result).toMatchObject({ reason: 'UNAVAILABLE' })
+    expect(captionItem.mock.calls.length).toBeLessThan(9)
+  })
+
   it('never burns an attempt on running out of credit — the model never saw the item', async () => {
     // Otherwise topping up the account would find half the shop quietly
     // retired by failures that said nothing about the items themselves.

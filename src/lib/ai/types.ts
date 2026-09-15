@@ -7,8 +7,23 @@
  * behind ANTHROPIC_API_KEY will run dry mid-import one day, and that outcome
  * is latched per batch — once seen, the batch stops calling — so it has to be
  * distinguishable from a network blip, which is worth retrying next import.
+ *
+ * `UNAVAILABLE` and `FAILED` split on one question: did the model answer?
+ *
+ *   UNAVAILABLE — the call never completed. A 500, a 529 overloaded, a
+ *   connection reset, DNS. This says nothing whatsoever about the item.
+ *   FAILED — the model answered and the answer was unusable: a grouping that
+ *   did not account for the photos, a listing that was not a listing.
+ *   Something about this item, or these photographs, or the prompt.
+ *
+ * The distinction earns its keep in `rewriteDescriptions`, which counts an
+ * item's failures and retires it after two. Counting an outage would let
+ * twenty minutes of Anthropic 529s permanently retire every item in the shop
+ * from a feature whose whole purpose is those items — and nothing in the app
+ * resets that counter. Before the split, `classify()` flattened every
+ * transport error into FAILED and the two were indistinguishable downstream.
  */
-export type AiFailure = 'NO_KEY' | 'OUT_OF_CREDIT' | 'FAILED'
+export type AiFailure = 'NO_KEY' | 'OUT_OF_CREDIT' | 'UNAVAILABLE' | 'FAILED'
 
 export type AiResult<T> = { ok: true; value: T } | { ok: false; reason: AiFailure }
 

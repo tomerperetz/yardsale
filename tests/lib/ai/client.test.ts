@@ -169,19 +169,37 @@ describe('clusterPhotos', () => {
     expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'OUT_OF_CREDIT' })
   })
 
-  it('reports FAILED for anything else', async () => {
+  // UNAVAILABLE and not FAILED, on all three. The split is not cosmetic: a
+  // caller that counts an item's failures and retires it after two — which
+  // `rewriteDescriptions` does — must never count a call that never reached
+  // the model, or twenty minutes of 529s retires the whole shop.
+  it('reports UNAVAILABLE for a server error', async () => {
     create.mockRejectedValue(apiError(500, 'boom'))
-    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'FAILED' })
+    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'UNAVAILABLE' })
   })
 
-  it('reports FAILED for a 400 that is not about money', async () => {
+  it('reports UNAVAILABLE for an overloaded service', async () => {
+    create.mockRejectedValue(apiError(529, 'overloaded_error'))
+    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'UNAVAILABLE' })
+  })
+
+  it('reports UNAVAILABLE for a 400 that is not about money', async () => {
     create.mockRejectedValue(apiError(400, 'messages.0.content.0.image: image does not match media_type'))
-    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'FAILED' })
+    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'UNAVAILABLE' })
   })
 
-  it('reports FAILED for a connection error, which carries no status', async () => {
+  it('reports UNAVAILABLE for a connection error, which carries no status', async () => {
     create.mockRejectedValue(apiError(undefined, 'Connection error.'))
-    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'FAILED' })
+    expect(await clusterPhotos([photo('a', 'x')])).toEqual({ ok: false, reason: 'UNAVAILABLE' })
+  })
+
+  it('still reports FAILED when the model ANSWERED and the answer was unusable', () => {
+    // The other side of the split, and the one that is genuinely about this
+    // request: the call completed, and what came back did not account for the
+    // photographs.
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    create.mockResolvedValue(groupsCall('not an array'))
+    return expect(clusterPhotos([photo('a', 'x')])).resolves.toEqual({ ok: false, reason: 'FAILED' })
   })
 
   it('groups an empty batch without a call — no photos is a grouping, not a failure', async () => {

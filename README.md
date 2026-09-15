@@ -301,8 +301,16 @@ has three guards rather than a confirmation dialogue:
   network blip deserves a retry. But selection is deterministic, so an item
   the model will never describe would be picked first on every press, paid for
   every time, while the screen went on saying "press again". Two failed
-  attempts and an item stops being offered. Running out of credit never counts
-  as one of them — the model never saw the item.
+  attempts and an item stops being offered.
+
+  Only failures **about the item** count towards those two — the model
+  answered and the answer was unusable, or there are no photo files left to
+  show it. A call that never reached the model does not: no credit, no key, a
+  500, a 529 overloaded, a dropped connection. That distinction is the
+  difference between a cap and a trap. Nothing in the app resets the counter
+  and only a success clears it, so counting an outage would let twenty minutes
+  of upstream trouble permanently retire every item in the shop from the one
+  feature that exists for them.
 
 Sold items and open-import drafts are excluded: the first's listing is
 history, and the second was written by this same prompt from these same
