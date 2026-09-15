@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { OrderStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
+import { toDateInput } from '@/lib/dates'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { AdminNav } from '@/components/admin/AdminNav'
 import { FirstRunChecklist } from '@/components/admin/FirstRunChecklist'
@@ -11,8 +12,10 @@ import styles from './settings.module.css'
 
 /**
  * The form over the `Settings` singleton row — shop identity, the BIT
- * number, pickup address/city, the three slot hour labels, and the hold
- * length. Nothing here is hardcoded: a shop with every field still empty
+ * number, pickup address/city, the sale's collection window, the three slot
+ * hour labels, and the hold length. The window lives here rather than on the
+ * item screens because it is one fact about the sale, and every new item
+ * opens with it. Nothing here is hardcoded: a shop with every field empty
  * renders every field empty, and `FirstRunChecklist` above points right
  * back here until the required ones are filled in.
  */
@@ -80,6 +83,11 @@ export default async function AdminSettingsPage() {
                   slotMorning: settings.slotMorning,
                   slotAfternoon: settings.slotAfternoon,
                   slotEvening: settings.slotEvening,
+                  // Empty while unset, on purpose: `saleWindow()`'s fallback
+                  // is what a new item gets, not what this form claims the
+                  // seller already chose.
+                  saleFrom: settings.saleFrom ? toDateInput(settings.saleFrom) : '',
+                  saleTo: settings.saleTo ? toDateInput(settings.saleTo) : '',
                   holdMinutes: String(settings.holdMinutes),
                 }}
               />

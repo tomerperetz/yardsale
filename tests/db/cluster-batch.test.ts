@@ -22,7 +22,9 @@ import { db } from '@/lib/db'
 import { photoDir, photoFilename } from '@/lib/images'
 import { clusterBatch } from '@/lib/import/batch'
 import { resetDb } from '../helpers/db'
-import { makeItem } from '../helpers/factories'
+import { makeItem, makeSettings } from '../helpers/factories'
+import { startOfUtcDay, utcDate } from '@/lib/dates'
+import { DEFAULT_SALE_DAYS } from '@/lib/sale-window'
 
 const BATCH = 'batch-under-test'
 
@@ -77,7 +79,8 @@ async function assertEveryPhotoPlaced(ids: string[], itemIds: string[]) {
 }
 
 describe('clusterBatch — the successful path', () => {
-  it('creates one DRAFT item per group, carrying the batch, price 0 and the carried-forward defaults', async () => {
+  it("creates one DRAFT item per group, carrying the batch, price 0, the last item's category and the sale's window", async () => {
+    await makeSettings({ saleFrom: utcDate(2026, 9, 15), saleTo: utcDate(2026, 9, 28) })
     const previous = await makeItem()
     const ids = await makePhotos([null, null, null])
     ok([[ids[0], ids[1]], [ids[2]]])
@@ -94,8 +97,11 @@ describe('clusterBatch — the successful path', () => {
       expect(item.priceAgorot).toBe(0)
       expect(item.importBatchId).toBe(BATCH)
       expect(item.categoryId).toBe(previous.categoryId)
-      expect(item.pickupFrom).toEqual(previous.pickupFrom)
-      expect(item.pickupTo).toEqual(previous.pickupTo)
+      // The window comes off Settings, not off `previous` — an imported item
+      // must never inherit a window the seller has not looked at since.
+      expect(item.pickupFrom).toEqual(utcDate(2026, 9, 15))
+      expect(item.pickupTo).toEqual(utcDate(2026, 9, 28))
+      expect(item.pickupFrom).not.toEqual(previous.pickupFrom)
     }
   })
 
@@ -186,7 +192,7 @@ describe('clusterBatch — the successful path', () => {
     expect(item.categoryId).toBe(previous.categoryId)
   })
 
-  it('falls back to today plus a week, and a category of its own, in a shop with no items yet', async () => {
+  it('falls back to today plus a fortnight, and a category of its own, in a shop with no items and no sale window', async () => {
     const ids = await makePhotos([null])
     ok([ids])
 
@@ -195,7 +201,10 @@ describe('clusterBatch — the successful path', () => {
 
     const item = await db.item.findUniqueOrThrow({ where: { id: result.itemIds[0] }, include: { category: true } })
     expect(item.category.name).toBe('כללי')
-    expect(item.pickupTo.getTime() - item.pickupFrom.getTime()).toBe(6 * 86_400_000)
+    expect(item.pickupTo.getTime() - item.pickupFrom.getTime()).toBe(DEFAULT_SALE_DAYS * 86_400_000)
+    // Today, never a day that has already gone: the fallback is the one
+    // window in the app nobody chose, so it can only ever point forwards.
+    expect(item.pickupFrom).toEqual(startOfUtcDay(new Date()))
   })
 })
 

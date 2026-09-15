@@ -43,3 +43,29 @@ export async function makeOrder(itemIds: string[], overrides: Partial<{ status: 
     },
   })
 }
+
+/**
+ * The `Settings` singleton, which `resetDb` clears — so a test that cares what
+ * the sale's collection window is has to say. Without a row, `getSettings`
+ * returns the empty first-run shape and `saleWindow` falls back to
+ * today → today+14, which is a moving target to assert against.
+ */
+export async function makeSettings(
+  overrides: Partial<{ saleFrom: Date | null; saleTo: Date | null; city: string; bitPhone: string }> = {},
+) {
+  return db.settings.create({
+    data: {
+      id: 1,
+      shopName: 'חנות',
+      tagline: '',
+      bitPhone: overrides.bitPhone ?? '0500000000',
+      addressLine: 'הרצל 5',
+      city: overrides.city ?? 'תל אביב',
+      slotMorning: '',
+      slotAfternoon: '',
+      slotEvening: '',
+      saleFrom: overrides.saleFrom ?? null,
+      saleTo: overrides.saleTo ?? null,
+    },
+  })
+}

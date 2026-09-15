@@ -6,11 +6,13 @@ import { deletePhotoFiles } from '@/lib/images'
 import {
   createItem,
   setItemStatus,
+  setPickupWindowForAll,
   updateItem,
   deleteItem as deleteItemRecord,
   type ItemInput,
   type ItemResult,
   type DeleteResult,
+  type PickupWindowResult,
 } from '@/lib/admin/items'
 import type { SellableStatus } from '@/lib/admin/item-status'
 
@@ -37,6 +39,22 @@ export async function updateItemAction(id: string, input: ItemInput): Promise<It
 export async function setItemStatusAction(id: string, status: SellableStatus): Promise<ItemResult> {
   const result = await setItemStatus(id, status)
   if (result.ok) {
+    revalidatePath('/admin/items')
+    revalidatePath('/')
+  }
+  return result
+}
+
+/**
+ * One pickup window across the whole shop — see `setPickupWindowForAll`, which
+ * refuses to move an item a live order is holding.
+ *
+ * Revalidates the shop as well as the seller's list: a window the buyer reads
+ * on every card and on the item page has just changed for every item on it.
+ */
+export async function setPickupWindowAction(from: string, to: string): Promise<PickupWindowResult> {
+  const result = await setPickupWindowForAll(from, to)
+  if (result.ok && result.updated > 0) {
     revalidatePath('/admin/items')
     revalidatePath('/')
   }

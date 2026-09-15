@@ -15,6 +15,18 @@ export function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
 }
 
+/**
+ * A stored calendar date as the `<input type="date">` value that renders it —
+ * the string `parseDate` (src/lib/admin/items.ts) reads back unchanged.
+ *
+ * `toISOString` and not a local formatter: every date column here is UTC
+ * midnight, and `getFullYear`/`getMonth` west of Greenwich would name the day
+ * before. A seller who sets the 28th must not be shown the 27th.
+ */
+export function toDateInput(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
 export function intersectPickupWindows(windows: PickupWindow[], today: Date): Intersection {
   if (windows.length === 0) return { ok: false, startItemId: '', endItemId: '' }
 

@@ -3,7 +3,8 @@ import { shopIsOpen, missingSettings } from '@/lib/settings'
 
 const empty = {
   id: 1, shopName: '', tagline: '', bitPhone: '', addressLine: '', city: '',
-  slotMorning: '', slotAfternoon: '', slotEvening: '', holdMinutes: 15, dismissedMerges: [],
+  slotMorning: '', slotAfternoon: '', slotEvening: '', saleFrom: null, saleTo: null,
+  holdMinutes: 15, dismissedMerges: [],
 }
 
 describe('shopIsOpen', () => {

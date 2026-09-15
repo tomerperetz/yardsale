@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { ItemStatus, OrderStatus } from '@prisma/client'
 import { db } from '@/lib/db'
-import { startOfUtcDay } from '@/lib/dates'
+import { toDateInput } from '@/lib/dates'
+import { saleWindowInputs } from '@/lib/sale-window'
+import { getSettings } from '@/lib/settings'
 import { AdminNav } from '@/components/admin/AdminNav'
 import { ImportReview, type ReviewItem, type ReviewPhoto } from './ImportReview'
 import type { ImportNotice } from '@/lib/import/batch'
@@ -20,14 +22,6 @@ import styles from '../../items.module.css'
  * reload did not lose it.
  */
 export const dynamic = 'force-dynamic'
-
-/** Matches the /admin/items default when a shop has no items to carry forward. */
-const DEFAULT_WINDOW_DAYS = 6
-const DAY_MS = 86_400_000
-
-function toDateInput(date: Date): string {
-  return date.toISOString().slice(0, 10)
-}
 
 /**
  * The notice `clusterBatchAction` returned, carried here in the URL by
@@ -48,7 +42,7 @@ export default async function ImportReviewPage({
   const { batchId } = await params
   const notice = readNotice((await searchParams).notice)
 
-  const [items, loosePhotos, categories, newCategories, published, itemCount, categoryCount, claimedCount] =
+  const [items, loosePhotos, categories, newCategories, published, itemCount, categoryCount, claimedCount, settings] =
     await Promise.all([
     db.item.findMany({
       where: { importBatchId: batchId, status: ItemStatus.DRAFT },
@@ -93,6 +87,7 @@ export default async function ImportReviewPage({
     db.item.count(),
     db.category.count(),
     db.order.count({ where: { status: OrderStatus.CLAIMED_PAID } }),
+    getSettings(),
   ])
 
   const reviewItems: ReviewItem[] = items.map((item) => ({
@@ -109,16 +104,19 @@ export default async function ImportReviewPage({
     photos: item.photos.map((photo): ReviewPhoto => ({ id: photo.id, lqip: photo.lqip })),
   }))
 
-  // What a card minted mid-review (movePhoto(photoId, 'new')) opens with. The
-  // server picks these with `carriedForward()` — the most recent item's
-  // category and window — and the most recent item is the last of this batch,
-  // so the last card here is the same answer without a second write.
+  // What a card minted mid-review (movePhoto(photoId, 'new')) opens with, and
+  // what the bulk bar's fields start at. The server picks these with
+  // `carriedForward()`: the most recent item's category — which is the last of
+  // this batch, so the last card here is the same answer without a second
+  // write — and the sale's collection window off Settings, which is read the
+  // same way here rather than inherited from a card whose dates the seller may
+  // already have changed.
   const last = reviewItems[reviewItems.length - 1]
-  const today = startOfUtcDay(new Date())
+  const sale = saleWindowInputs(settings)
   const defaults = {
     categoryName: last?.categoryName ?? categories[0]?.name ?? '',
-    pickupFrom: last?.pickupFrom ?? toDateInput(today),
-    pickupTo: last?.pickupTo ?? toDateInput(new Date(today.getTime() + DEFAULT_WINDOW_DAYS * DAY_MS)),
+    pickupFrom: sale.from,
+    pickupTo: sale.to,
   }
 
   return (

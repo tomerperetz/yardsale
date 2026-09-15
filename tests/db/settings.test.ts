@@ -89,6 +89,8 @@ describe('saveSettingsAction with no Settings row', () => {
       slotMorning: '',
       slotAfternoon: '',
       slotEvening: '',
+      saleFrom: '',
+      saleTo: '',
       holdMinutes: '15',
     })
 

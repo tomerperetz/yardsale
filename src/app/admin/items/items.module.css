@@ -229,6 +229,123 @@
   line-height: 1.5;
 }
 
+/* ── one pickup window across the shop ───────────────────────
+   Sits above the item table, because it is about every row in it. Logical
+   properties throughout: in dir="rtl" the two date fields start at the right
+   physical edge, and `inline-start`/`inline-end` are what keeps that true
+   without naming a side. */
+.windowBulk {
+  background: #faf8f6;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 14px 15px;
+  margin-block-end: 18px;
+}
+
+.windowFields {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+/* The two date inputs share the row with the button; each keeps enough width
+   to show a whole date, and the trio wraps rather than shrinking below it. */
+.windowFields > div {
+  flex: 1 1 150px;
+  min-width: 140px;
+}
+
+.windowBtn {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 12px;
+  padding: 11px 16px;
+  /* A real tap target, on a control that moves every item in the shop. */
+  min-height: 44px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  flex: none;
+}
+.windowBtn:hover:not(:disabled) {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+.windowBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The confirmation takes the button's place in the row and carries its own
+   count, so the number the seller agrees to is in front of them at the moment
+   they agree to it. */
+.windowConfirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1 1 100%;
+}
+.windowConfirm span {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-inline-end: auto;
+}
+.windowConfirm .btn {
+  min-height: 44px;
+}
+
+.windowNote {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+.windowLink {
+  color: var(--ink-2);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.windowWarn,
+.windowError {
+  margin: 10px 0 0;
+  background: var(--accent-soft);
+  color: #9b3a20;
+  border-radius: 12px;
+  padding: 9px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.windowFlash {
+  margin: 10px 0 0;
+  background: #e4f5e9;
+  color: #1f7a3d;
+  border-radius: 12px;
+  padding: 9px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+  /* 320px–390px: a date input and a button cannot share a line and stay
+     legible, so each takes the full width. The button stays 44px tall. */
+  .windowFields > div,
+  .windowBtn {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+  .windowBtn {
+    justify-content: center;
+  }
+}
+
 /* ── phone: each row becomes a stacked card ──────────────────
    Same technique as /admin/orders, at the same width, so the two admin
    tables behave identically: the markup stays a real <table> for assistive

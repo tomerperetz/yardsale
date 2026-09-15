@@ -6,7 +6,8 @@ import { hebrewSlug, randomSuffix } from '@/lib/slug'
 import { aiEnabled, captionItem, clusterPhotos } from '@/lib/ai/client'
 import type { AiFailure, AiResult, Caption } from '@/lib/ai/types'
 import { DRAFT_NAME } from '@/lib/admin/draft'
-import { startOfUtcDay } from '@/lib/dates'
+import { saleWindow } from '@/lib/sale-window'
+import { getSettings } from '@/lib/settings'
 import { groupByCaptureTime, type PhotoStamp } from '@/lib/exif'
 import { photoDir, photoFilename } from '@/lib/images'
 
@@ -30,10 +31,6 @@ export type ClusterBatchResult =
 
 /** The width both passes show the model — the smallest stored, and plenty to recognise an object by. */
 const MODEL_WIDTH = 400
-
-/** Matches the /admin/items default: today, through six days from today. */
-const DEFAULT_WINDOW_DAYS = 6
-const DAY_MS = 86_400_000
 
 /**
  * The category a shop with no categories at all falls back to: an item needs
@@ -70,7 +67,8 @@ export async function clusterBatch(batchId: string): Promise<ClusterBatchResult>
   const clustering = enabled ? await cluster(photos, bytes) : degraded(photos, 'NO_COPY')
 
   // The defaults are read before anything is created, so the items this call
-  // makes cannot become their own "most recent item".
+  // makes cannot become their own "most recent item" — the category still
+  // comes from that item, and the drafts below would otherwise be it.
   const defaults = await carriedForward()
 
   let created: NewItem[]
@@ -322,25 +320,33 @@ async function createProposedCategory(name: string): Promise<string | undefined>
 /**
  * The defaults an imported item opens with — the same ones /admin/items
  * computes for the entry form, so a seller who imports gets what a seller who
- * types would have got: the category and pickup window of their most recent
- * item.
+ * types would have got: their most recent item's category, and the sale's
+ * collection window from Settings.
+ *
+ * The window used to carry forward from that same last item, and that is
+ * exactly how one stale week propagated across every later import until
+ * nineteen of twenty live items pointed at days that had already passed.
+ * Nothing in that chain ever re-asked the seller. `saleWindow()` does ask —
+ * of Settings, which the seller can fix in one place — and falls back to
+ * today → today+14 when they have not set one, so a new item can never open
+ * in the past.
+ *
+ * The category still carries forward: a seller photographing one room drops
+ * one kind of thing, and a wrong guess there costs a click on the review
+ * screen rather than a lie to a buyer.
  *
  * Exported for `movePhoto(photoId, 'new')` on the review screen, which mints a
  * draft mid-review and must open it with the same defaults the batch's other
  * items opened with rather than a second, drifting copy of this rule.
  */
 export async function carriedForward(): Promise<Defaults> {
-  const [last, categories] = await Promise.all([
-    db.item.findFirst({
-      orderBy: { createdAt: 'desc' },
-      select: { categoryId: true, pickupFrom: true, pickupTo: true },
-    }),
+  const [last, categories, settings] = await Promise.all([
+    db.item.findFirst({ orderBy: { createdAt: 'desc' }, select: { categoryId: true } }),
     db.category.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    getSettings(),
   ])
 
-  const today = startOfUtcDay(new Date())
-  const pickupFrom = last?.pickupFrom ?? today
-  const pickupTo = last?.pickupTo ?? new Date(today.getTime() + DEFAULT_WINDOW_DAYS * DAY_MS)
+  const { from: pickupFrom, to: pickupTo } = saleWindow(settings)
 
   if (last) return { categoryId: last.categoryId, pickupFrom, pickupTo, categories }
   if (categories.length > 0) return { categoryId: categories[0].id, pickupFrom, pickupTo, categories }

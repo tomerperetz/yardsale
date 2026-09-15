@@ -11,8 +11,8 @@ import {
   categoryId,
   deleteItem,
   normalizeCategoryName,
-  parseDate,
   updateItem,
+  validatePickupWindow,
   HELD_BY_ORDER,
   LIVE_ORDER_STATUSES,
   SOLD_THROUGH_SHOP,
@@ -209,12 +209,14 @@ export async function bulkEdit(itemIds: string[], patch: BulkPatch): Promise<Edi
   }
 
   if (patch.pickupFrom !== undefined || patch.pickupTo !== undefined) {
-    const from = parseDate(patch.pickupFrom ?? '')
-    const to = parseDate(patch.pickupTo ?? '')
-    if (!from || !to) return { ok: false, error: 'חלון איסוף לא תקין.' }
-    if (to.getTime() < from.getTime()) return { ok: false, error: 'חלון האיסוף מסתיים לפני שהוא מתחיל.' }
-    data.pickupFrom = from
-    data.pickupTo = to
+    // '' for a missing end, which `validatePickupWindow` rejects as the
+    // invalid window it is: a patch carrying one end alone would have to be
+    // checked against each item's stored other end, and this call has no way
+    // to say "four applied, two did not".
+    const window = validatePickupWindow(patch.pickupFrom ?? '', patch.pickupTo ?? '')
+    if ('error' in window) return { ok: false, error: window.error }
+    data.pickupFrom = window.from
+    data.pickupTo = window.to
   }
 
   const category = patch.categoryName === undefined ? null : normalizeCategoryName(patch.categoryName)
