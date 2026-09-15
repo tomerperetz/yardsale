@@ -1,0 +1,225 @@
+/* ── who came, and what they opened ──────────────────────────
+   Logical properties throughout: in dir="rtl" `inline-start` is the right
+   physical edge, and naming a side would put every bar on the wrong one. */
+.shell { min-width: 0; }
+
+.panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+  margin-block-end: 18px;
+}
+
+.ptitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-block-end: 16px;
+}
+.ptitle h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* The window picker sits at the far end of the title row. */
+.windows {
+  margin-inline-start: auto;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.win {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: #fff;
+  /* A real tap target on a phone without making the pill look like a button. */
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+}
+.winOn {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+.stat {
+  background: #faf8f6;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.statNum {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+  /* A bare number is LTR even in a Hebrew column. */
+  direction: ltr;
+  unicode-bidi: isolate;
+  align-self: flex-start;
+}
+.statLabel { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.statHint { font-size: 11.5px; color: var(--ink-3); }
+
+.sub {
+  margin: 22px 0 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* Fourteen columns that shrink rather than scroll: a chart that scrolls
+   sideways on a phone is a chart nobody looks at. */
+.days {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+.day {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.dayBarWrap {
+  width: 100%;
+  height: 64px;
+  display: flex;
+  align-items: flex-end;
+}
+.dayBar {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: var(--accent);
+}
+.dayNum {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-2);
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.dayLabel {
+  font-size: 10px;
+  color: var(--ink-3);
+  direction: ltr;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink-3);
+  line-height: 1.55;
+}
+
+.tableWrap { overflow-x: auto; }
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.table th {
+  text-align: start;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+  padding: 0 10px 9px;
+  white-space: nowrap;
+}
+.table td {
+  padding: 11px 10px;
+  border-block-start: 1px solid var(--line);
+  vertical-align: middle;
+  color: var(--ink-2);
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+.table td:first-child { direction: rtl; }
+
+.it {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 190px;
+  color: inherit;
+  text-decoration: none;
+}
+.it img,
+.noPhoto {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  object-fit: cover;
+  flex: none;
+  background: #eee9e4;
+}
+.it b { display: block; font-weight: 600; color: var(--ink); }
+.it small { display: block; font-size: 11.5px; color: var(--ink-3); }
+.it:hover b { text-decoration: underline; }
+
+/* The heatmap column: one bar per row, longest = the item most people opened.
+   Widest column, and the first to go on a phone. */
+.barCol { width: 34%; min-width: 90px; }
+.bar {
+  display: block;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+/* Nobody opened it. An em dash, not a zero-width bar — see the note at the
+   call site for why this row is the one worth being able to spot. */
+.none { color: var(--ink-3); font-size: 13px; }
+
+.note {
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+
+/* Fourteen dates cannot fit across a phone — they ran into each other as one
+   unreadable string. The bars and the counts still carry the shape; every
+   third date is enough to place it in time. */
+@media (max-width: 560px) {
+  .day:not(:nth-child(3n + 1)) .dayLabel { visibility: hidden; }
+}
+
+@media (max-width: 720px) {
+  /* Same stacked-card treatment as the other two admin tables, so all three
+     behave identically on a phone. The markup stays a real <table>. */
+  .table thead { display: none; }
+  .table tr { display: block; border-block-start: 1px solid var(--line); padding-block: 10px; }
+  .table td { display: flex; justify-content: space-between; gap: 12px; border: 0; padding: 4px 0; }
+  .table td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-3);
+    direction: rtl;
+  }
+  .barCol { width: auto; }
+  .bar { align-self: center; }
+}

@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
-import { ItemStatus } from '@prisma/client'
+import { EventKind, ItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getPublicCategories } from '@/lib/items'
 import { NOT_PUBLIC_STATUSES } from '@/lib/visibility'
 import { shareCard } from '@/lib/share-card'
+import { record } from '@/lib/analytics/record'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { itemsOrderBy, itemsWhere, parseGridParams } from '@/lib/grid'
@@ -75,6 +76,11 @@ export default async function Home({
   // Returns any lapsed hold's items to AVAILABLE before we read the grid — the
   // project has no scheduler, so every read path opens with this instead.
   await releaseExpiredHolds()
+
+  // Awaited, not fired and forgotten: this server renders long-lived, so a
+  // floating promise would usually be fine — but "usually" is not a reason,
+  // and one insert costs less than reasoning about when it is not.
+  await record(EventKind.VIEW_SHOP)
 
   const params = parseGridParams(await searchParams)
   const [settings, categories, items, availableCount] = await Promise.all([

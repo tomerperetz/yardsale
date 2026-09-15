@@ -33,6 +33,7 @@ model Item {
   descriptionAttempts   Int      @default(0)
   photos        Photo[]
   orderItems    OrderItem[]
+  events        Event[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -114,6 +115,41 @@ model Settings {
   saleTo          DateTime? @db.Date
   holdMinutes     Int       @default(15)
   dismissedMerges String[]  @default([]) // "<idA>:<idB>", ids sorted; see §8
+}
+
+/**
+ * One thing a visitor did. The whole of this shop's analytics.
+ *
+ * It lives in the shop's own database rather than in a third-party tracker for
+ * three reasons: no buyer's browsing leaves the seller's own server, there is
+ * no script to add and no cookie banner to answer for, and item events join
+ * straight onto Item — which is what makes "which things are people actually
+ * looking at" answerable next to the price and the status.
+ *
+ * `visitorId` is a random opaque id from a first-party cookie. It is not an
+ * IP, not a fingerprint, and not linkable to a person: it says "the same
+ * browser came back", which is all a unique-visitor count needs.
+ */
+model Event {
+  id        String    @id @default(cuid())
+  visitorId String
+  kind      EventKind
+  // Null for a shop-wide event. Cascades, so deleting an item takes its
+  // history with it rather than leaving rows pointing at nothing — and so
+  // that `deleteItem` keeps working without knowing this table exists.
+  itemId    String?
+  item      Item?     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([itemId, kind])
+  @@index([visitorId])
+}
+
+enum EventKind {
+  VIEW_SHOP // the grid, however it was filtered
+  VIEW_ITEM // an item page or its quick-look overlay
+  ADD_TO_CART
 }
 
 enum ItemStatus {

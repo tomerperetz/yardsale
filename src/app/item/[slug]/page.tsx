@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
-import { ItemStatus } from '@prisma/client'
+import { EventKind, ItemStatus } from '@prisma/client'
 import { notFound } from 'next/navigation'
 import { getPublicItem } from '@/lib/items'
 import { formatAgorot } from '@/lib/money'
 import { shareCard } from '@/lib/share-card'
+import { record } from '@/lib/analytics/record'
 import { getSettings } from '@/lib/settings'
 import { releaseExpiredHolds } from '@/lib/orders/sweep'
 import { decodeSlugParam } from '@/lib/slug'
@@ -68,6 +69,11 @@ export default async function ItemPage({ params }: { params: Promise<{ slug: str
 
   const [item, settings] = await Promise.all([getPublicItem(decodeSlugParam(slug)), getSettings()])
   if (!item) notFound()
+
+  // After the lookup, so a 404 is not counted as someone looking at an item,
+  // and keyed on the id rather than the slug — a slug changes when the seller
+  // renames the item, and the history should not fork when it does.
+  await record(EventKind.VIEW_ITEM, item.id)
 
   return (
     <>

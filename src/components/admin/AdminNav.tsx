@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import styles from './admin.module.css'
 
-export type AdminActiveRoute = 'items' | 'orders' | 'categories' | 'settings'
+export type AdminActiveRoute = 'items' | 'orders' | 'categories' | 'insights' | 'settings'
 
 type AdminNavProps = {
   active: AdminActiveRoute
@@ -36,6 +36,12 @@ export function AdminNav({ active, itemCount, ordersAlertCount, categoryCount }:
         className={active === 'categories' ? `${styles.navLink} ${styles.navOn}` : styles.navLink}
       >
         קטגוריות <span className={styles.navCount}>{categoryCount}</span>
+      </Link>
+      <Link
+        href="/admin/insights"
+        className={active === 'insights' ? `${styles.navLink} ${styles.navOn}` : styles.navLink}
+      >
+        תנועה
       </Link>
       <div className={styles.navSep} aria-hidden="true" />
       <Link

@@ -181,6 +181,43 @@ once the shop has a domain of its own. In development neither is set and the
 tags are relative, which is the honest answer: there is nothing out there to
 preview from.
 
+## Who is looking (/admin/insights)
+
+The shop counts its own traffic, in its own database. No third-party tracker,
+no script tag, nothing sent anywhere, and no cookie banner to answer for.
+
+A visitor is a random opaque id in a first-party cookie — not an IP, not a
+fingerprint, not linkable to a person. It says "the same browser came back",
+which is all a unique-visitor count needs.
+
+Three events are recorded: a shop view, an item view (the full page and the
+quick-look overlay both count — to a buyer they are the same act), and an add
+to cart. The screen shows visitors, views and adds over 7 / 30 / all days, a
+fourteen-day bar of daily visitors, and a table of every item with the number
+of **people** who opened it, the number of **views**, and how many put it in a
+cart.
+
+The two item columns disagree in the way that matters: eighty views from three
+people is three people who cannot decide; three views from three people is
+three people who looked once. The gap between "opened" and "added to cart" is
+the one that changes what the seller does — many opens and no adds means the
+price is wrong, and no opens at all means the first photograph is wrong.
+Items nobody has opened are in the table too, showing a dash rather than a
+bar, because that row is the most actionable one on the screen.
+
+**Bots are filtered by user agent, and this matters more than it sounds.**
+Every WhatsApp share fetches the page it links to in order to build its
+preview card, so without the filter the shop's own link previews would
+register as somebody reading that item every time the seller shared it.
+Anything with no user agent at all is treated the same way. One consequence
+worth knowing: Playwright's default user agent says `HeadlessChrome`, so the
+e2e suite generates no events — test traffic stays out of the numbers.
+
+Recording never breaks a page. `record()` swallows everything: a failed
+insert, a database blip, a half-applied migration all cost a log line and
+nothing else, because an analytics row is worth nothing next to the shop
+being up.
+
 ## The five states an item can be in
 
 Four of them the shop manages on its own; one is yours.

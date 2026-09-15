@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { recordAddToCart } from '@/lib/analytics/actions'
 
 const STORAGE_KEY = 'ys_cart'
 
@@ -59,12 +60,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const add = (id: string) => {
+    // Whether this click is a real addition, decided BEFORE the state update
+    // and outside it. React may invoke an updater more than once for a single
+    // call — it does exactly that in StrictMode — and a function that talks to
+    // the server cannot live somewhere that might run twice. It did, and every
+    // add to cart was recorded twice.
+    const isNew = !ids.includes(id)
+
     setIds((prev) => {
       if (prev.includes(id)) return prev
       const next = [...prev, id]
       writeStoredIds(next)
       return next
     })
+
+    if (isNew) {
+      // Analytics must never be why a buyer's cart misbehaves. The server
+      // action swallows its own failures; this catches the request itself
+      // failing, which is a buyer on a bad connection.
+      void recordAddToCart(id).catch(() => {})
+    }
   }
 
   const remove = (id: string) => {

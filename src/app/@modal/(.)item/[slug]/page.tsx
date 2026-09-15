@@ -1,4 +1,6 @@
+import { EventKind } from '@prisma/client'
 import { notFound } from 'next/navigation'
+import { record } from '@/lib/analytics/record'
 import { getPublicItem } from '@/lib/items'
 import { getSettings } from '@/lib/settings'
 import { decodeSlugParam } from '@/lib/slug'
@@ -16,6 +18,12 @@ export default async function ItemQuickLook({ params }: { params: Promise<{ slug
   const { slug } = await params
   const [item, settings] = await Promise.all([getPublicItem(decodeSlugParam(slug)), getSettings()])
   if (!item) notFound()
+
+  // The same event as the full page, because to a buyer it is the same act:
+  // clicking a card from the grid renders this, and opening the link fresh
+  // renders that. Counting only one of them would measure which route Next
+  // chose rather than what anybody did.
+  await record(EventKind.VIEW_ITEM, item.id)
 
   return (
     <QuickLookModal titleId={`item-name-${item.slug}`}>
