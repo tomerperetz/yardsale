@@ -355,6 +355,39 @@ describe('clusterBatch when one caption fails', () => {
     expect(result.notice).toBe('NO_COPY')
   })
 
+  /**
+   * `AiFailure` grew a fourth arm (UNAVAILABLE) so the shop-wide rewrite could
+   * stop counting outages against items. The import path maps failures to a
+   * three-arm `ImportNotice`, and the risk of adding an arm upstream is that
+   * the new one falls through a mapping that only knew three. These two say it
+   * does not: an outage degrades exactly like any other failed call.
+   */
+  it('degrades a clustering outage to capture-time grouping, not to an unhandled notice', async () => {
+    const ids = await threeUnstamped()
+    clusterPhotos.mockResolvedValue({ ok: false, reason: 'UNAVAILABLE' })
+
+    const result = await clusterBatch(BATCH)
+
+    // NO_COPY, which the review screen has a Hebrew sentence for. Not
+    // OUT_OF_CREDIT — the seller has no bill to go and pay — and not undefined.
+    expect(result).toMatchObject({ ok: true, notice: 'NO_COPY' })
+    if (!result.ok) return
+    expect(captionItem).toHaveBeenCalledTimes(0)
+    await assertEveryPhotoPlaced(ids, result.itemIds)
+  })
+
+  it('reports a captioning outage as NO_COPY, with every item still created', async () => {
+    const ids = await makePhotos([null, null])
+    ok([[ids[0]], [ids[1]]])
+    captionItem.mockResolvedValue({ ok: false, reason: 'UNAVAILABLE' })
+
+    const result = await clusterBatch(BATCH)
+
+    expect(result).toMatchObject({ ok: true, notice: 'NO_COPY' })
+    if (!result.ok) return
+    expect(result.itemIds).toHaveLength(2)
+  })
+
   it('reports credit exhaustion discovered during captioning', async () => {
     const ids = await makePhotos([null, null])
     ok([[ids[0]], [ids[1]]])
