@@ -97,6 +97,13 @@ export function ImportReview({
   // and must not lock the other nineteen while it runs.
   const [suggesting, setSuggesting] = useState<Set<string>>(new Set())
 
+  /**
+   * Cards the seller has typed into since a suggestion was asked for. A ref,
+   * not state: it is read after an await, and a state value captured in that
+   * closure would be the one from before the seller started typing.
+   */
+  const typedInto = useRef<Set<string>>(new Set())
+
   const openViewer = (ids: string[], index: number, origin: HTMLElement | null) => {
     viewerOrigin.current = origin
     setViewing({ ids, index })
@@ -175,7 +182,10 @@ export function ImportReview({
    */
   function editItem(id: string, patch: Partial<ReviewItem>, options: { dirty?: boolean } = {}) {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
-    if (options.dirty !== false) setDirty((prev) => new Set(prev).add(id))
+    if (options.dirty !== false) {
+      setDirty((prev) => new Set(prev).add(id))
+      typedInto.current.add(id)
+    }
   }
 
   function clearDirty(ids: Iterable<string>) {
@@ -501,10 +511,16 @@ export function ImportReview({
    * would read as though the move itself had gone wrong.
    */
   async function suggest(itemId: string) {
+    typedInto.current.delete(itemId)
     setSuggesting((prev) => new Set(prev).add(itemId))
     try {
       const result = await suggestItemAction(itemId)
       if (!result.ok) return
+      // The seller did not wait. Typing a name and having it replaced by a
+      // model's mid-sentence is worse than getting no suggestion at all — and
+      // the row already holds the suggestion, so pressing save is what they
+      // meant either way.
+      if (typedInto.current.has(itemId)) return
       // Written straight over the placeholder, and NOT marked dirty: the
       // server has already stored exactly these values, so a "save" here would
       // write back what is already there and a "unsaved" dot would be a lie.
